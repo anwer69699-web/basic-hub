@@ -1,4 +1,4 @@
-```lua
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -28,24 +28,32 @@ local Settings = {
 	CheckTime = true
 }
 
-local balls = {}
+local lastDistance = math.huge
+local approachConfirm = 0
+local parryLock = false
+local currentBall = nil
 
-local function findBalls()
-	local found = {}
+local beam
+local ballBox
+local playerBox
+
+local function findBall()
 	local ballsFolder = Workspace:FindFirstChild("Balls")
-	if not ballsFolder then return found end
-
+	if not ballsFolder then return nil end
 	for _,v in pairs(ballsFolder:GetDescendants()) do
 		if v:IsA("BasePart") and v:GetAttribute("realBall") then
-			table.insert(found,v)
+			return v
 		end
 	end
-
-	return found
 end
 
 RunService.Heartbeat:Connect(function()
-	balls = findBalls()
+	if not currentBall or not currentBall.Parent then
+		currentBall = findBall()
+
+		if beam then beam:Destroy() beam=nil end
+		if ballBox then ballBox:Destroy() ballBox=nil end
+	end
 end)
 
 local function parry(times)
@@ -89,62 +97,132 @@ end
 RunService.Heartbeat:Connect(function()
 
 	if not Settings.AutoParry then return end
+	if not currentBall then return end
 	if not hrp then return end
+	if parryLock then return end
 
 	local playerPos = hrp.Position
+	local ballPos = currentBall.Position
+	local vel = currentBall.AssemblyLinearVelocity
 
-	for _,ball in pairs(balls) do
+	local speed = vel.Magnitude
+	if speed < 1 then return end
 
-		if not ball or not ball.Parent then continue end
+	local dist = (playerPos - ballPos).Magnitude
 
-		local ballPos = ball.Position
-		local vel = ball.AssemblyLinearVelocity
-		local speed = vel.Magnitude
+	local target = currentBall:GetAttribute("target")
+	if target ~= player.Name then return end
 
-		if speed < 1 then continue end
+	local dirToPlayer = (playerPos - ballPos).Unit
+	local ballDir = vel.Unit
 
-		local target = ball:GetAttribute("target")
-		if target ~= player.Name then continue end
+	local dot = dirToPlayer:Dot(ballDir)
+	if dot < 0.3 then return end
 
-		local dist = (playerPos - ballPos).Magnitude
+	local approaching = dist < lastDistance
+	lastDistance = dist
 
-		local dirToPlayer = (playerPos - ballPos).Unit
-		local ballDir = vel.Unit
-		local dot = dirToPlayer:Dot(ballDir)
+	if approaching then
+		approachConfirm += 1
+	else
+		approachConfirm = 0
+	end
 
-		if dot < 0.3 then continue end
+	if approachConfirm < 2 then return end
 
-		local futurePos = ballPos + vel * 0.18
-		local predictedDist = (playerPos - futurePos).Magnitude
-		local timeToHit = predictedDist / speed
+	local futurePos = ballPos + vel * 0.18
+	local predictedDist = (playerPos - futurePos).Magnitude
+	local timeToHit = predictedDist / speed
 
-		local adaptiveTime, adaptiveDistance = getAdaptive(speed)
+	local adaptiveTime, adaptiveDistance = getAdaptive(speed)
 
-		local shouldParry = false
+	local shouldParry = false
 
-		if Settings.CheckDistance and predictedDist <= adaptiveDistance then
+	if Settings.CheckDistance and predictedDist <= adaptiveDistance then
+		shouldParry = true
+	end
+
+	if Settings.CheckTime and timeToHit <= adaptiveTime then
+		shouldParry = true
+	end
+
+	if Settings.CheckDistance and Settings.CheckTime then
+		if predictedDist <= adaptiveDistance and timeToHit <= adaptiveTime then
 			shouldParry = true
+		else
+			shouldParry = false
 		end
+	end
 
-		if Settings.CheckTime and timeToHit <= adaptiveTime then
-			shouldParry = true
-		end
-
-		if Settings.CheckDistance and Settings.CheckTime then
-			if predictedDist <= adaptiveDistance and timeToHit <= adaptiveTime then
-				shouldParry = true
-			else
-				shouldParry = false
-			end
-		end
-
-		if shouldParry then
-			parry()
-		end
-
+	if shouldParry then
+		parryLock = true
+		parry()
+		task.delay(0.25,function()
+			parryLock=false
+		end)
 	end
 
 end)
+
+local function updateVisuals()
+
+	if Settings.BallPath and currentBall and hrp then
+
+		if not beam then
+			local a0 = Instance.new("Attachment",currentBall)
+			local a1 = Instance.new("Attachment",hrp)
+
+			beam = Instance.new("Beam")
+			beam.Attachment0 = a0
+			beam.Attachment1 = a1
+			beam.Width0 = 0.2
+			beam.Width1 = 0.2
+			beam.Color = ColorSequence.new(Color3.fromRGB(255,0,0))
+			beam.Parent = currentBall
+		end
+
+	elseif beam then
+		beam:Destroy()
+		beam=nil
+	end
+
+	if Settings.BallHitbox and currentBall then
+
+		if not ballBox then
+			ballBox = Instance.new("BoxHandleAdornment")
+			ballBox.Adornee = currentBall
+			ballBox.Size = Vector3.new(6,6,6)
+			ballBox.Color3 = Color3.fromRGB(0,255,0)
+			ballBox.Transparency = 0.5
+			ballBox.AlwaysOnTop = true
+			ballBox.Parent = currentBall
+		end
+
+	elseif ballBox then
+		ballBox:Destroy()
+		ballBox=nil
+	end
+
+	if Settings.PlayerHitbox and hrp then
+
+		if not playerBox then
+			playerBox = Instance.new("BoxHandleAdornment")
+			playerBox.Adornee = hrp
+			playerBox.Size = Vector3.new(4,6,2)
+			playerBox.Color3 = Color3.fromRGB(0,150,255)
+			playerBox.Transparency = 0.5
+			playerBox.AlwaysOnTop = true
+			playerBox.Parent = hrp
+		end
+
+	elseif playerBox then
+		playerBox:Destroy()
+		playerBox=nil
+	end
+
+end
+
+RunService.RenderStepped:Connect(updateVisuals)
 
 local gui = Instance.new("ScreenGui",game.CoreGui)
 
@@ -177,7 +255,7 @@ local function toggle(name,setting,y)
 	btn.Size = UDim2.new(0,25,0,25)
 	btn.Position = UDim2.new(0.8,0,0,y+2)
 	btn.Text = ""
-	btn.BackgroundColor3 = Settings[setting] and Color3.fromRGB(0,200,0) or Color3.fromRGB(120,0,0)
+	btn.BackgroundColor3 = Color3.fromRGB(120,0,0)
 	Instance.new("UICorner",btn)
 
 	btn.MouseButton1Click:Connect(function()
@@ -204,4 +282,3 @@ Instance.new("UICorner",closeBtn)
 closeBtn.MouseButton1Click:Connect(function()
 	gui:Destroy()
 end)
-```
