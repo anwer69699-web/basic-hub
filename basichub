@@ -1,4 +1,6 @@
---// SERVICES
+-- DotHub Ultra Complete (Old Parry + Adaptive + GUI + Visuals)
+
+-- SERVICES
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -14,6 +16,7 @@ local function getHRP()
 	local char = player.Character or player.CharacterAdded:Wait()
 	return char:WaitForChild("HumanoidRootPart")
 end
+
 local hrp = getHRP()
 player.CharacterAdded:Connect(function()
 	hrp = getHRP()
@@ -22,8 +25,16 @@ end)
 ------------------------------------------------
 -- SETTINGS
 ------------------------------------------------
-local AutoParry = true
-local ManualSpam = false
+local Settings = {
+	AutoParry = true,
+	ManualSpam = false,
+	BallPath = false,
+	BallHitbox = false,
+	PlayerHitbox = false,
+	CheckDistance = true,
+	CheckTime = true
+}
+
 local lastDistance = math.huge
 local approachConfirm = 0
 local parryLock = false
@@ -54,22 +65,10 @@ end)
 ------------------------------------------------
 local function parry(times)
 	times = times or 1
-	for i = 1, times do
+	for i = 1,times do
 		VIM:SendKeyEvent(true,Enum.KeyCode.F,false,game)
 		VIM:SendKeyEvent(false,Enum.KeyCode.F,false,game)
 	end
-end
-
-------------------------------------------------
--- HIDDEN KEY SYSTEM
-------------------------------------------------
-local Key1,Key2,Key3,Key4,Key5,Key6 = "D","o","t","H","u","b"
-local KeyEntered = {}
-
-local function checkKey(char)
-	table.insert(KeyEntered,char)
-	if #KeyEntered > 6 then table.remove(KeyEntered,1) end
-	return table.concat(KeyEntered) == (Key1..Key2..Key3..Key4..Key5..Key6)
 end
 
 ------------------------------------------------
@@ -78,19 +77,54 @@ end
 UIS.InputBegan:Connect(function(input,gp)
 	if gp then return end
 	if input.KeyCode == Enum.KeyCode.E then
-		ManualSpam = not ManualSpam
+		Settings.ManualSpam = not Settings.ManualSpam
 	end
 end)
 
 RunService.RenderStepped:Connect(function()
-	if ManualSpam then parry(10) end -- 3 ضربات لكل فريم
+	if Settings.ManualSpam then parry(10) end
 end)
 
 ------------------------------------------------
--- AUTO PARRY ENGINE V3
+-- ADAPTIVE TABLE
+------------------------------------------------
+local AdaptiveTable = {
+	{min=0,max=49,   Time=0.50, Dist=45},
+	{min=50,max=74,  Time=0.45, Dist=45},
+	{min=75,max=99,  Time=0.42, Dist=46},
+	{min=100,max=124,Time=0.40, Dist=47},
+	{min=125,max=149,Time=0.38, Dist=49},
+	{min=150,max=174,Time=0.36, Dist=50},
+	{min=175,max=199,Time=0.34, Dist=55},
+	{min=200,max=249,Time=0.30, Dist=60},
+	{min=250,max=299,Time=0.28, Dist=65},
+	{min=300,max=349,Time=0.25, Dist=70},
+	{min=350,max=399,Time=0.22, Dist=75},
+	{min=400,max=449,Time=0.20, Dist=80},
+	{min=450,max=499,Time=0.18, Dist=85},
+	{min=500,max=599,Time=0.17, Dist=90},
+	{min=600,max=699,Time=0.16, Dist=95},
+	{min=700,max=799,Time=0.15, Dist=100},
+	{min=800,max=899,Time=0.14, Dist=105},
+	{min=900,max=999,Time=0.13, Dist=110},
+	{min=1000,max=1099,Time=0.12, Dist=115},
+	{min=1100,max=math.huge,Time=0.11, Dist=120}
+}
+
+local function getAdaptive(speed)
+	for _,v in ipairs(AdaptiveTable) do
+		if speed >= v.min and speed <= v.max then
+			return v.Time, v.Dist
+		end
+	end
+	return 0.5,45
+end
+
+------------------------------------------------
+-- AUTO PARRY ENGINE (ORIGINAL LOGIC + FLEXIBLE)
 ------------------------------------------------
 RunService.Heartbeat:Connect(function()
-	if not AutoParry or not currentBall or not hrp then return end
+	if not Settings.AutoParry or not currentBall or not hrp then return end
 	if parryLock then return end
 
 	local playerPos = hrp.Position
@@ -101,17 +135,12 @@ RunService.Heartbeat:Connect(function()
 
 	local dist = (playerPos - ballPos).Magnitude
 	local target = currentBall:GetAttribute("target")
-	if target ~= player.Name then
-		lastDistance = dist
-		approachConfirm = 0
-		return
-	end
+	if target ~= player.Name then return end
 
-	-- أكثر من 12 نظام تحقق لمنع double parry
 	local dirToPlayer = (playerPos - ballPos).Unit
 	local ballDir = vel.Unit
 	local dot = dirToPlayer:Dot(ballDir)
-	if dot < 0.35 then return end -- Direction Check
+	if dot < 0.35 then return end
 
 	local approaching = dist < lastDistance
 	lastDistance = dist
@@ -120,64 +149,84 @@ RunService.Heartbeat:Connect(function()
 	else
 		approachConfirm = 0
 	end
-	if approachConfirm < 2 then return end -- Approach Check
+	if approachConfirm < 2 then return end
 
-	local futurePos = ballPos + vel * 0.16
+	local futurePos = ballPos + vel*0.16
 	local predictedDist = (playerPos - futurePos).Magnitude
-	local timeToHit = predictedDist / speed
+	local timeToHit = speed>0 and predictedDist/speed or 0
 
-	if tick() - lastParry < 0.28 then return end -- Cooldown Check
-	if predictedDist > 120 then return end -- Max Distance Check
-	if timeToHit > 0.5 then return end -- Max Time Check
-	if vel.Magnitude < 5 then return end -- Velocity Stability
-	if dist < 8 then timeToHit = 0 end -- Emergency Check
+	local adaptiveTime, adaptiveDistance = getAdaptive(speed)
 
-	-- Adaptive System (دقيق جداً)
-	local adaptiveTime = 0
-	local adaptiveDistance = 0
+	-- FLEXIBLE CONDITION
+	local shouldParry = false
 
-	if speed < 50 then adaptiveTime=0.50; adaptiveDistance=45
-	elseif speed<75 then adaptiveTime=0.45; adaptiveDistance=45
-	elseif speed<100 then adaptiveTime=0.42; adaptiveDistance=46
-	elseif speed<125 then adaptiveTime=0.40; adaptiveDistance=47
-	elseif speed<150 then adaptiveTime=0.38; adaptiveDistance=49
-	elseif speed<175 then adaptiveTime=0.36; adaptiveDistance=50
-	elseif speed<200 then adaptiveTime=0.34; adaptiveDistance=55
-	elseif speed<250 then adaptiveTime=0.30; adaptiveDistance=60
-	elseif speed<300 then adaptiveTime=0.28; adaptiveDistance=65
-	elseif speed<350 then adaptiveTime=0.25; adaptiveDistance=70
-	elseif speed<400 then adaptiveTime=0.22; adaptiveDistance=75
-	elseif speed<450 then adaptiveTime=0.20; adaptiveDistance=80
-	elseif speed<500 then adaptiveTime=0.18; adaptiveDistance=85
-	elseif speed<550 then adaptiveTime=0.17; adaptiveDistance=90
-	elseif speed<600 then adaptiveTime=0.16; adaptiveDistance=95
-	elseif speed<700 then adaptiveTime=0.15; adaptiveDistance=100
-	elseif speed<800 then adaptiveTime=0.14; adaptiveDistance=105
-	elseif speed<900 then adaptiveTime=0.13; adaptiveDistance=110
-	elseif speed<1000 then adaptiveTime=0.12; adaptiveDistance=115
-	elseif speed<1100 then adaptiveTime=0.11; adaptiveDistance=118
-	else adaptiveTime=0.10; adaptiveDistance=120
+	if Settings.CheckDistance and predictedDist <= adaptiveDistance then shouldParry = true end
+	if Settings.CheckTime     and timeToHit <= adaptiveTime then shouldParry = true end
+
+	if Settings.CheckDistance and Settings.CheckTime then
+		if predictedDist <= adaptiveDistance and timeToHit <= adaptiveTime then shouldParry = true else shouldParry = false end
 	end
 
-	if predictedDist > adaptiveDistance then return end
-	if timeToHit > adaptiveTime then return end
-
-	-- FINAL PARRY
-	parryLock = true
-	parry() -- ضربة واحدة فقط
-	lastParry = tick()
-
-	task.delay(0.30,function()
-		parryLock = false
-	end)
+	if shouldParry then
+		parryLock = true
+		parry()
+		lastParry = tick()
+		task.delay(0.3,function() parryLock=false end)
+	end
 end)
 
 ------------------------------------------------
--- MAIN UI
+-- VISUALS
+------------------------------------------------
+local beam, ballBox, playerBox
+
+local function updateVisuals()
+	if Settings.BallPath and currentBall and hrp and not beam then
+		local a0 = Instance.new("Attachment",currentBall)
+		local a1 = Instance.new("Attachment",hrp)
+		beam = Instance.new("Beam")
+		beam.Attachment0 = a0
+		beam.Attachment1 = a1
+		beam.Width0 = 0.2
+		beam.Width1 = 0.2
+		beam.Color = ColorSequence.new(Color3.fromRGB(255,0,0))
+		beam.Parent = currentBall
+	end
+
+	if Settings.BallHitbox and currentBall and not ballBox then
+		ballBox = Instance.new("BoxHandleAdornment")
+		ballBox.Adornee = currentBall
+		ballBox.Size = Vector3.new(6,6,6)
+		ballBox.Color3 = Color3.fromRGB(0,255,0)
+		ballBox.Transparency = 0.5
+		ballBox.AlwaysOnTop = true
+		ballBox.Parent = currentBall
+	end
+
+	if Settings.PlayerHitbox and hrp and not playerBox then
+		playerBox = Instance.new("BoxHandleAdornment")
+		playerBox.Adornee = hrp
+		playerBox.Size = Vector3.new(4,6,2)
+		playerBox.Color3 = Color3.fromRGB(0,150,255)
+		playerBox.Transparency = 0.5
+		playerBox.AlwaysOnTop = true
+		playerBox.Parent = hrp
+	end
+end
+
+task.spawn(function()
+	while true do
+		task.wait(0.5)
+		updateVisuals()
+	end
+end)
+
+------------------------------------------------
+-- GUI
 ------------------------------------------------
 local gui = Instance.new("ScreenGui",game.CoreGui)
 local main = Instance.new("Frame",gui)
-main.Size = UDim2.new(0,350,0,180)
+main.Size = UDim2.new(0,280,0,260)
 main.Position = UDim2.new(0.03,0,0.4,0)
 main.BackgroundColor3 = Color3.fromRGB(25,25,35)
 main.Active = true
@@ -185,96 +234,47 @@ main.Draggable = true
 Instance.new("UICorner",main)
 
 local title = Instance.new("TextLabel",main)
-title.Size = UDim2.new(1,0,0,40)
+title.Size = UDim2.new(1,0,0,35)
+title.Text = "DotHub Ultra"
+title.TextColor3 = Color3.fromRGB(255,0,0)
 title.BackgroundTransparency = 1
-title.Text = "DotHub Ultra V3"
 title.TextScaled = true
-title.TextColor3 = Color3.new(1,1,1)
 
-local autoBtn = Instance.new("TextButton",main)
-autoBtn.Size = UDim2.new(0.8,0,0,35)
-autoBtn.Position = UDim2.new(0.1,0,0.45,0)
-autoBtn.Text = "Auto Parry : OFF"
-Instance.new("UICorner",autoBtn)
-autoBtn.MouseButton1Click:Connect(function()
-	AutoParry = not AutoParry
-	autoBtn.Text = "Auto Parry : "..(AutoParry and "ON" or "OFF")
-end)
+local function toggle(name,setting,y)
+	local label = Instance.new("TextLabel",main)
+	label.Size = UDim2.new(0.6,0,0,30)
+	label.Position = UDim2.new(0.05,0,0,y)
+	label.BackgroundTransparency = 1
+	label.Text = name
+	label.TextScaled = true
+	label.TextColor3 = Color3.new(1,1,1)
 
--- Show/Hide Button (DH)
-local toggleBtn = Instance.new("TextButton",gui)
-toggleBtn.Size = UDim2.new(0,40,0,40)
-toggleBtn.Position = UDim2.new(0,5,0,200)
-toggleBtn.Text = "DH"
-Instance.new("UICorner",toggleBtn)
-toggleBtn.MouseButton1Click:Connect(function()
-	main.Visible = not main.Visible
-end)
+	local btn = Instance.new("TextButton",main)
+	btn.Size = UDim2.new(0,25,0,25)
+	btn.Position = UDim2.new(0.8,0,0,y+2)
+	btn.Text = ""
+	btn.BackgroundColor3 = Color3.fromRGB(120,0,0)
+	Instance.new("UICorner",btn)
 
-------------------------------------------------
--- DEBUG PANEL
-------------------------------------------------
-local debugGui = Instance.new("ScreenGui",game.CoreGui)
-local frame = Instance.new("Frame",debugGui)
-frame.Size = UDim2.new(0,350,0,180)
-frame.Position = UDim2.new(0.6,0,0.1,0)
-frame.BackgroundColor3 = Color3.fromRGB(25,25,35)
-frame.Active = true
-frame.Draggable = true
-Instance.new("UICorner",frame)
+	btn.MouseButton1Click:Connect(function()
+		Settings[setting] = not Settings[setting]
+		btn.BackgroundColor3 = Settings[setting] and Color3.fromRGB(0,200,0) or Color3.fromRGB(120,0,0)
+	end)
+end
 
-local text = Instance.new("TextLabel",frame)
-text.Size = UDim2.new(1,0,1,0)
-text.BackgroundTransparency = 1
-text.TextColor3 = Color3.new(1,1,1)
-text.TextScaled = true
-text.Font = Enum.Font.GothamBold
-text.Text = "Initializing..."
+toggle("Auto Parry","AutoParry",50)
+toggle("Manual Spam","ManualSpam",90)
+toggle("Ball Path","BallPath",130)
+toggle("Ball Hitbox","BallHitbox",170)
+toggle("Player Hitbox","PlayerHitbox",210)
 
-RunService.RenderStepped:Connect(function()
-	if not currentBall or not hrp then
-		text.Text = "Searching Ball..."
-		return
-	end
-
-	local dist = (hrp.Position - currentBall.Position).Magnitude
-	local speed = currentBall.AssemblyLinearVelocity.Magnitude
-	local timeToHit = speed > 0 and dist / speed or 0
-
-	-- Adaptive System
-	local adaptiveTime = 0
-	local adaptiveDistance = 0
-
-	if speed < 50 then adaptiveTime=0.50; adaptiveDistance=25
-	elseif speed<75 then adaptiveTime=0.45; adaptiveDistance=30
-	elseif speed<100 then adaptiveTime=0.42; adaptiveDistance=35
-	elseif speed<125 then adaptiveTime=0.40; adaptiveDistance=40
-	elseif speed<150 then adaptiveTime=0.38; adaptiveDistance=45
-	elseif speed<175 then adaptiveTime=0.36; adaptiveDistance=50
-	elseif speed<200 then adaptiveTime=0.34; adaptiveDistance=55
-	elseif speed<250 then adaptiveTime=0.30; adaptiveDistance=60
-	elseif speed<300 then adaptiveTime=0.28; adaptiveDistance=65
-	elseif speed<350 then adaptiveTime=0.25; adaptiveDistance=70
-	elseif speed<400 then adaptiveTime=0.22; adaptiveDistance=75
-	elseif speed<450 then adaptiveTime=0.20; adaptiveDistance=80
-	elseif speed<500 then adaptiveTime=0.18; adaptiveDistance=85
-	elseif speed<550 then adaptiveTime=0.17; adaptiveDistance=90
-	elseif speed<600 then adaptiveTime=0.16; adaptiveDistance=95
-	elseif speed<700 then adaptiveTime=0.15; adaptiveDistance=100
-	elseif speed<800 then adaptiveTime=0.14; adaptiveDistance=105
-	elseif speed<900 then adaptiveTime=0.13; adaptiveDistance=110
-	elseif speed<1000 then adaptiveTime=0.12; adaptiveDistance=115
-	elseif speed<1100 then adaptiveTime=0.11; adaptiveDistance=118
-	else adaptiveTime=0.10; adaptiveDistance=120
-	end
-
-	text.Text = 
-	"Ball Distance : "..math.floor(dist).."\n"..
-	"Ball Speed : "..math.floor(speed).."\n"..
-	"Time To Hit : "..string.format("%.2f",timeToHit).."\n"..
-	"Adaptive Dist : "..adaptiveDistance.."\n"..
-	"Adaptive Time : "..string.format("%.2f",adaptiveTime).."\n"..
-	"AutoParry : "..tostring(AutoParry).."\n"..
-	"ManualSpam : "..tostring(ManualSpam).."\n"..
-	"ParryLock : "..tostring(parryLock)
+-- CLOSE BUTTON
+local closeBtn = Instance.new("TextButton",main)
+closeBtn.Size = UDim2.new(0.2,0,0,30)
+closeBtn.Position = UDim2.new(0.7,0,0,5)
+closeBtn.Text = "X"
+closeBtn.BackgroundColor3 = Color3.fromRGB(255,0,0)
+Instance.new("UICorner",closeBtn)
+closeBtn.MouseButton1Click:Connect(function()
+	gui:Destroy()
 end)
