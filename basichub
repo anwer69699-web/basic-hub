@@ -136,11 +136,11 @@ RunService.Heartbeat:Connect(function()
 	local adaptiveTime = 0
 	local adaptiveDistance = 0
 
-	if speed < 50 then adaptiveTime=0.50; adaptiveDistance=25
-	elseif speed<75 then adaptiveTime=0.45; adaptiveDistance=30
-	elseif speed<100 then adaptiveTime=0.42; adaptiveDistance=35
-	elseif speed<125 then adaptiveTime=0.40; adaptiveDistance=40
-	elseif speed<150 then adaptiveTime=0.38; adaptiveDistance=45
+	if speed < 50 then adaptiveTime=0.50; adaptiveDistance=45
+	elseif speed<75 then adaptiveTime=0.45; adaptiveDistance=45
+	elseif speed<100 then adaptiveTime=0.42; adaptiveDistance=46
+	elseif speed<125 then adaptiveTime=0.40; adaptiveDistance=47
+	elseif speed<150 then adaptiveTime=0.38; adaptiveDistance=49
 	elseif speed<175 then adaptiveTime=0.36; adaptiveDistance=50
 	elseif speed<200 then adaptiveTime=0.34; adaptiveDistance=55
 	elseif speed<250 then adaptiveTime=0.30; adaptiveDistance=60
