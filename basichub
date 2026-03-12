@@ -1,6 +1,3 @@
--- DotHub Ultra Complete (Old Parry + Adaptive + GUI + Visuals)
-
--- SERVICES
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -9,22 +6,17 @@ local VIM = game:GetService("VirtualInputManager")
 
 local player = Players.LocalPlayer
 
-------------------------------------------------
--- CHARACTER
-------------------------------------------------
 local function getHRP()
 	local char = player.Character or player.CharacterAdded:Wait()
 	return char:WaitForChild("HumanoidRootPart")
 end
 
 local hrp = getHRP()
+
 player.CharacterAdded:Connect(function()
 	hrp = getHRP()
 end)
 
-------------------------------------------------
--- SETTINGS
-------------------------------------------------
 local Settings = {
 	AutoParry = true,
 	ManualSpam = false,
@@ -38,12 +30,12 @@ local Settings = {
 local lastDistance = math.huge
 local approachConfirm = 0
 local parryLock = false
-local lastParry = 0
 local currentBall = nil
 
-------------------------------------------------
--- BALL DETECTION
-------------------------------------------------
+local beam
+local ballBox
+local playerBox
+
 local function findBall()
 	local ballsFolder = Workspace:FindFirstChild("Balls")
 	if not ballsFolder then return nil end
@@ -57,23 +49,20 @@ end
 RunService.Heartbeat:Connect(function()
 	if not currentBall or not currentBall.Parent then
 		currentBall = findBall()
+
+		if beam then beam:Destroy() beam=nil end
+		if ballBox then ballBox:Destroy() ballBox=nil end
 	end
 end)
 
-------------------------------------------------
--- PARRY FUNCTION
-------------------------------------------------
 local function parry(times)
 	times = times or 1
-	for i = 1,times do
+	for i=1,times do
 		VIM:SendKeyEvent(true,Enum.KeyCode.F,false,game)
 		VIM:SendKeyEvent(false,Enum.KeyCode.F,false,game)
 	end
 end
 
-------------------------------------------------
--- MANUAL SPAM
-------------------------------------------------
 UIS.InputBegan:Connect(function(input,gp)
 	if gp then return end
 	if input.KeyCode == Enum.KeyCode.E then
@@ -82,149 +71,160 @@ UIS.InputBegan:Connect(function(input,gp)
 end)
 
 RunService.RenderStepped:Connect(function()
-	if Settings.ManualSpam then parry(10) end
+	if Settings.ManualSpam then
+		parry(5)
+	end
 end)
 
-------------------------------------------------
--- ADAPTIVE TABLE
-------------------------------------------------
 local AdaptiveTable = {
-	{min=0,max=49,   Time=0.50, Dist=45},
-	{min=50,max=74,  Time=0.45, Dist=45},
-	{min=75,max=99,  Time=0.42, Dist=46},
-	{min=100,max=124,Time=0.40, Dist=47},
-	{min=125,max=149,Time=0.38, Dist=49},
-	{min=150,max=174,Time=0.36, Dist=50},
-	{min=175,max=199,Time=0.34, Dist=55},
-	{min=200,max=249,Time=0.30, Dist=60},
-	{min=250,max=299,Time=0.28, Dist=65},
-	{min=300,max=349,Time=0.25, Dist=70},
-	{min=350,max=399,Time=0.22, Dist=75},
-	{min=400,max=449,Time=0.20, Dist=80},
-	{min=450,max=499,Time=0.18, Dist=85},
-	{min=500,max=599,Time=0.17, Dist=90},
-	{min=600,max=699,Time=0.16, Dist=95},
-	{min=700,max=799,Time=0.15, Dist=100},
-	{min=800,max=899,Time=0.14, Dist=105},
-	{min=900,max=999,Time=0.13, Dist=110},
-	{min=1000,max=1099,Time=0.12, Dist=115},
-	{min=1100,max=math.huge,Time=0.11, Dist=120}
+	{min=0,max=200,Time=0.45,Dist=50},
+	{min=201,max=400,Time=0.35,Dist=70},
+	{min=401,max=700,Time=0.25,Dist=95},
+	{min=701,max=1000,Time=0.18,Dist=110},
+	{min=1001,max=math.huge,Time=0.12,Dist=130}
 }
 
 local function getAdaptive(speed)
 	for _,v in ipairs(AdaptiveTable) do
 		if speed >= v.min and speed <= v.max then
-			return v.Time, v.Dist
+			return v.Time,v.Dist
 		end
 	end
-	return 0.5,45
+	return 0.4,60
 end
 
-------------------------------------------------
--- AUTO PARRY ENGINE (ORIGINAL LOGIC + FLEXIBLE)
-------------------------------------------------
 RunService.Heartbeat:Connect(function()
-	if not Settings.AutoParry or not currentBall or not hrp then return end
+
+	if not Settings.AutoParry then return end
+	if not currentBall then return end
+	if not hrp then return end
 	if parryLock then return end
 
 	local playerPos = hrp.Position
 	local ballPos = currentBall.Position
 	local vel = currentBall.AssemblyLinearVelocity
+
 	local speed = vel.Magnitude
 	if speed < 1 then return end
 
 	local dist = (playerPos - ballPos).Magnitude
+
 	local target = currentBall:GetAttribute("target")
 	if target ~= player.Name then return end
 
 	local dirToPlayer = (playerPos - ballPos).Unit
 	local ballDir = vel.Unit
+
 	local dot = dirToPlayer:Dot(ballDir)
-	if dot < 0.35 then return end
+	if dot < 0.3 then return end
 
 	local approaching = dist < lastDistance
 	lastDistance = dist
+
 	if approaching then
 		approachConfirm += 1
 	else
 		approachConfirm = 0
 	end
+
 	if approachConfirm < 2 then return end
 
-	local futurePos = ballPos + vel*0.16
+	local futurePos = ballPos + vel * 0.18
 	local predictedDist = (playerPos - futurePos).Magnitude
-	local timeToHit = speed>0 and predictedDist/speed or 0
+	local timeToHit = predictedDist / speed
 
 	local adaptiveTime, adaptiveDistance = getAdaptive(speed)
 
-	-- FLEXIBLE CONDITION
 	local shouldParry = false
 
-	if Settings.CheckDistance and predictedDist <= adaptiveDistance then shouldParry = true end
-	if Settings.CheckTime     and timeToHit <= adaptiveTime then shouldParry = true end
+	if Settings.CheckDistance and predictedDist <= adaptiveDistance then
+		shouldParry = true
+	end
+
+	if Settings.CheckTime and timeToHit <= adaptiveTime then
+		shouldParry = true
+	end
 
 	if Settings.CheckDistance and Settings.CheckTime then
-		if predictedDist <= adaptiveDistance and timeToHit <= adaptiveTime then shouldParry = true else shouldParry = false end
+		if predictedDist <= adaptiveDistance and timeToHit <= adaptiveTime then
+			shouldParry = true
+		else
+			shouldParry = false
+		end
 	end
 
 	if shouldParry then
 		parryLock = true
 		parry()
-		lastParry = tick()
-		task.delay(0.3,function() parryLock=false end)
+		task.delay(0.25,function()
+			parryLock=false
+		end)
 	end
-end)
 
-------------------------------------------------
--- VISUALS
-------------------------------------------------
-local beam, ballBox, playerBox
+end)
 
 local function updateVisuals()
-	if Settings.BallPath and currentBall and hrp and not beam then
-		local a0 = Instance.new("Attachment",currentBall)
-		local a1 = Instance.new("Attachment",hrp)
-		beam = Instance.new("Beam")
-		beam.Attachment0 = a0
-		beam.Attachment1 = a1
-		beam.Width0 = 0.2
-		beam.Width1 = 0.2
-		beam.Color = ColorSequence.new(Color3.fromRGB(255,0,0))
-		beam.Parent = currentBall
+
+	if Settings.BallPath and currentBall and hrp then
+
+		if not beam then
+			local a0 = Instance.new("Attachment",currentBall)
+			local a1 = Instance.new("Attachment",hrp)
+
+			beam = Instance.new("Beam")
+			beam.Attachment0 = a0
+			beam.Attachment1 = a1
+			beam.Width0 = 0.2
+			beam.Width1 = 0.2
+			beam.Color = ColorSequence.new(Color3.fromRGB(255,0,0))
+			beam.Parent = currentBall
+		end
+
+	elseif beam then
+		beam:Destroy()
+		beam=nil
 	end
 
-	if Settings.BallHitbox and currentBall and not ballBox then
-		ballBox = Instance.new("BoxHandleAdornment")
-		ballBox.Adornee = currentBall
-		ballBox.Size = Vector3.new(6,6,6)
-		ballBox.Color3 = Color3.fromRGB(0,255,0)
-		ballBox.Transparency = 0.5
-		ballBox.AlwaysOnTop = true
-		ballBox.Parent = currentBall
+	if Settings.BallHitbox and currentBall then
+
+		if not ballBox then
+			ballBox = Instance.new("BoxHandleAdornment")
+			ballBox.Adornee = currentBall
+			ballBox.Size = Vector3.new(6,6,6)
+			ballBox.Color3 = Color3.fromRGB(0,255,0)
+			ballBox.Transparency = 0.5
+			ballBox.AlwaysOnTop = true
+			ballBox.Parent = currentBall
+		end
+
+	elseif ballBox then
+		ballBox:Destroy()
+		ballBox=nil
 	end
 
-	if Settings.PlayerHitbox and hrp and not playerBox then
-		playerBox = Instance.new("BoxHandleAdornment")
-		playerBox.Adornee = hrp
-		playerBox.Size = Vector3.new(4,6,2)
-		playerBox.Color3 = Color3.fromRGB(0,150,255)
-		playerBox.Transparency = 0.5
-		playerBox.AlwaysOnTop = true
-		playerBox.Parent = hrp
+	if Settings.PlayerHitbox and hrp then
+
+		if not playerBox then
+			playerBox = Instance.new("BoxHandleAdornment")
+			playerBox.Adornee = hrp
+			playerBox.Size = Vector3.new(4,6,2)
+			playerBox.Color3 = Color3.fromRGB(0,150,255)
+			playerBox.Transparency = 0.5
+			playerBox.AlwaysOnTop = true
+			playerBox.Parent = hrp
+		end
+
+	elseif playerBox then
+		playerBox:Destroy()
+		playerBox=nil
 	end
+
 end
 
-task.spawn(function()
-	while true do
-		task.wait(0.5)
-		updateVisuals()
-	end
-end)
+RunService.RenderStepped:Connect(updateVisuals)
 
-------------------------------------------------
--- GUI
-------------------------------------------------
 local gui = Instance.new("ScreenGui",game.CoreGui)
+
 local main = Instance.new("Frame",gui)
 main.Size = UDim2.new(0,280,0,260)
 main.Position = UDim2.new(0.03,0,0.4,0)
@@ -241,6 +241,7 @@ title.BackgroundTransparency = 1
 title.TextScaled = true
 
 local function toggle(name,setting,y)
+
 	local label = Instance.new("TextLabel",main)
 	label.Size = UDim2.new(0.6,0,0,30)
 	label.Position = UDim2.new(0.05,0,0,y)
@@ -260,6 +261,7 @@ local function toggle(name,setting,y)
 		Settings[setting] = not Settings[setting]
 		btn.BackgroundColor3 = Settings[setting] and Color3.fromRGB(0,200,0) or Color3.fromRGB(120,0,0)
 	end)
+
 end
 
 toggle("Auto Parry","AutoParry",50)
@@ -268,13 +270,14 @@ toggle("Ball Path","BallPath",130)
 toggle("Ball Hitbox","BallHitbox",170)
 toggle("Player Hitbox","PlayerHitbox",210)
 
--- CLOSE BUTTON
 local closeBtn = Instance.new("TextButton",main)
 closeBtn.Size = UDim2.new(0.2,0,0,30)
 closeBtn.Position = UDim2.new(0.7,0,0,5)
 closeBtn.Text = "X"
 closeBtn.BackgroundColor3 = Color3.fromRGB(255,0,0)
+
 Instance.new("UICorner",closeBtn)
+
 closeBtn.MouseButton1Click:Connect(function()
 	gui:Destroy()
 end)
