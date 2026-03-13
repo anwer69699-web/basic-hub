@@ -8,7 +8,7 @@ local UIS = game:GetService("UserInputService")
 local Player = Players.LocalPlayer
 
 -- الحد الأقصى لمجال الدائرة
-local MAX_RANGE = 30
+local MAX_RANGE = 65
 
 wait(1)
 
