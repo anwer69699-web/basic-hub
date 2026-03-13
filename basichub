@@ -1,101 +1,97 @@
-local starterGUI = game:GetService("StarterGui")
+--// Services
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local VirtualInputManager = game:GetService("VirtualInputManager")
 local Stats = game:GetService("Stats")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 local UIS = game:GetService("UserInputService")
 
 local Player = Players.LocalPlayer
 
--- الحد الأقصى لمجال الدائرة
-local MAX_RANGE = 65
+--// Settings
+local BASE_SIZE = 35
+local MAX_SIZE = 500
+local SPEED_FACTOR = 0.05
+local PARRY_MARGIN = 0.1
+local SMOOTH_FACTOR = 0.1
+local SAFE_DISTANCE = 1000
+local FIELD_BUFFER = 1 -- أقصى مسافة خارج المجال يُسمح بالـParry
 
-wait(1)
+--// Player
+local Character
+local HRP
 
-starterGUI:SetCore("SendNotification",{
-	Title = " نسخة العربarbix hub",
-	Text = "Auto Parry العربي",
-	Icon = "rbxassetid://135351041318579",
-	Duration = 10
-})
-
--- تحميل السكربت الأصلي (الدائرة + الفيجوال)
-loadstring(game:HttpGet("https://scriptblox.com/raw/UPD-Blade-Ball-op-autoparry-with-visualizer-8652"))()
-
-local Parried = false
-local Connection = nil
+--// State
+local Field
+local ParryUsed = false
+local CurrentTarget = nil
+local CurrentSize = BASE_SIZE
 local ManualSpam = false
 
--- اللاعب
-local function getHRP()
-	local char = Player.Character or Player.CharacterAdded:Wait()
-	return char:WaitForChild("HumanoidRootPart")
+-------------------------------------------------
+-- Character Setup
+-------------------------------------------------
+local function SetupCharacter()
+	Character = Player.Character or Player.CharacterAdded:Wait()
+	HRP = Character:WaitForChild("HumanoidRootPart")
+
+	if Field then Field:Destroy() end
+
+	Field = Instance.new("Part")
+	Field.Shape = Enum.PartType.Ball
+	Field.Anchored = true
+	Field.CanCollide = false
+	Field.Transparency = 0.6
+	Field.Material = Enum.Material.SmoothPlastic
+	Field.Size = Vector3.new(BASE_SIZE, BASE_SIZE, BASE_SIZE)
+	Field.Parent = workspace
+
+	CurrentSize = BASE_SIZE
 end
 
-local HRP = getHRP()
-
+SetupCharacter()
 Player.CharacterAdded:Connect(function()
-	HRP = getHRP()
+	task.wait(1)
+	SetupCharacter()
 end)
 
--- إيجاد الكرة
+-------------------------------------------------
+-- Get Real Ball
+-------------------------------------------------
 local function GetBall()
-	for _, Ball in ipairs(workspace.Balls:GetChildren()) do
-		if Ball:GetAttribute("realBall") then
-			return Ball
+	local folder = workspace:FindFirstChild("Balls")
+	if not folder then return end
+	for _,ball in pairs(folder:GetChildren()) do
+		if ball:GetAttribute("realBall") then
+			return ball
 		end
 	end
 end
 
--- إعادة ضبط الهدف
-local function ResetConnection()
-	if Connection then
-		Connection:Disconnect()
-		Connection = nil
-	end
-end
-
-workspace.Balls.ChildAdded:Connect(function()
-
-	local Ball = GetBall()
-	if not Ball then return end
-
-	ResetConnection()
-
-	Connection = Ball:GetAttributeChangedSignal("target"):Connect(function()
-		Parried = false
-	end)
-
-end)
-
--- زر السبام
-UIS.InputBegan:Connect(function(input,gp)
-
+-------------------------------------------------
+-- Manual Spam Input
+-------------------------------------------------
+UIS.InputBegan:Connect(function(input, gp)
 	if gp then return end
-
 	if input.KeyCode == Enum.KeyCode.E then
 		ManualSpam = not ManualSpam
 	end
-
 end)
 
 RunService.RenderStepped:Connect(function()
-
 	if ManualSpam then
-		VirtualInputManager:SendKeyEvent(true,Enum.KeyCode.F,false,game)
-		VirtualInputManager:SendKeyEvent(false,Enum.KeyCode.F,false,game)
+		VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
+		VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
 	end
-
 end)
 
--- المحرك
-RunService.PreSimulation:Connect(function()
-
+-------------------------------------------------
+-- Main System
+-------------------------------------------------
+RunService.RenderStepped:Connect(function()
+	if not HRP then return end
 	local Ball = GetBall()
-	if not Ball or not HRP then return end
-
+	if not Ball then return end
 	local Velocity = Ball.AssemblyLinearVelocity
-
 	if Ball:FindFirstChild("zoomies") then
 		Velocity = Ball.zoomies.VectorVelocity
 	end
@@ -105,27 +101,41 @@ RunService.PreSimulation:Connect(function()
 
 	local Distance = (HRP.Position - Ball.Position).Magnitude
 
-	-- تعويض البنج
-	local Ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue()/1000
-	local Check = (Distance / Speed) - Ping
+	--=== حساب الحجم التدريجي للمجال ===--
+	local PlayerSize = Character:GetExtentsSize().Magnitude
+	local DesiredSize = BASE_SIZE + (PlayerSize * 0.5) + (Speed * SPEED_FACTOR)
+	if DesiredSize > MAX_SIZE then DesiredSize = MAX_SIZE end
 
-	-- اتجاه الكرة
-	local DirectionToPlayer = (HRP.Position - Ball.Position).Unit
-	local BallDirection = Velocity.Unit
-	local Dot = DirectionToPlayer:Dot(BallDirection)
+	-- تصحيح تدريجي
+	CurrentSize = CurrentSize + (DesiredSize - CurrentSize) * SMOOTH_FACTOR
+	Field.Size = Vector3.new(CurrentSize, CurrentSize, CurrentSize)
+	Field.Position = HRP.Position
 
-	-- مجال الدائرة
-	local InRange = Distance <= MAX_RANGE
-
-	if Ball:GetAttribute("target") == Player.Name
-	and Dot > 0.35
-	and InRange
-	and not Parried
-	and Check <= 0.73 then
-
-		VirtualInputManager:SendMouseButtonEvent(0,0,0,true,game,0)
-
-		Parried = true
+	--=== نظام Parry ===--
+	local Target = Ball:GetAttribute("target")
+	if Target ~= CurrentTarget then
+		ParryUsed = false
+		CurrentTarget = Target
 	end
 
+	local Radius = CurrentSize / 2
+	local DistanceToField = math.max(Distance - Radius, 0)
+
+	local Ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
+	local TimeToField = (DistanceToField / Speed) - Ping
+
+	-- Projection للتأكد من اقتراب الكرة
+	local DirectionToPlayer = (HRP.Position - Ball.Position).Unit
+	local VelocityTowardsPlayer = Velocity:Dot(DirectionToPlayer)
+	local IsApproaching = VelocityTowardsPlayer > 0
+
+	-- Parry يحدث قبل الاصطدام مباشرة
+	if Target == Player.Name
+	and not ParryUsed
+	and IsApproaching
+	and (DistanceToField <= FIELD_BUFFER or TimeToField <= PARRY_MARGIN) then
+
+		VirtualInputManager:SendMouseButtonEvent(0,0,0,true,game,0)
+		ParryUsed = true
+	end
 end)
