@@ -1,141 +1,285 @@
---// Services
+--// ARBIX HUB KEY SYSTEM + FULL SCRIPT
+-- Author: علي
+
+-- SERVICES
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Stats = game:GetService("Stats")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local UIS = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local StarterGui = game:GetService("StarterGui")
 
 local Player = Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
 
---// Settings
-local BASE_SIZE = 35
-local MAX_SIZE = 500
-local SPEED_FACTOR = 0.05
-local PARRY_MARGIN = 0.1
-local SMOOTH_FACTOR = 0.1
-local SAFE_DISTANCE = 1000
-local FIELD_BUFFER = 1 -- أقصى مسافة خارج المجال يُسمح بالـParry
+-- SETTINGS
+local correctKey = "arbix hub"
+local MAX_SPEED = 700
+local PARRY_MARGIN = 0.08
+local SAFE_DISTANCE = 1200
+local FIELD_TRANSPARENCY = 1
+local FIELD_COLOR = Color3.fromRGB(255,255,255)
+local MANUAL_SPAM_KEY = Enum.KeyCode.E
+local AUTO_PRESS_KEY = Enum.KeyCode.F
+local RESET_SCRIPT_KEY = Enum.KeyCode.P
 
---// Player
+-- FIELDS CONFIG (15 مجالات)
+local FIELDS = {
+{Size=30, MinSpeed=0, MaxSpeed=50, Part=nil},
+{Size=40, MinSpeed=51, MaxSpeed=100, Part=nil},
+{Size=50, MinSpeed=101, MaxSpeed=150, Part=nil},
+{Size=60, MinSpeed=151, MaxSpeed=200, Part=nil},
+{Size=70, MinSpeed=201, MaxSpeed=250, Part=nil},
+{Size=80, MinSpeed=251, MaxSpeed=300, Part=nil},
+{Size=90, MinSpeed=301, MaxSpeed=350, Part=nil},
+{Size=100, MinSpeed=351, MaxSpeed=400, Part=nil},
+{Size=110, MinSpeed=401, MaxSpeed=450, Part=nil},
+{Size=120, MinSpeed=451, MaxSpeed=500, Part=nil},
+{Size=130, MinSpeed=501, MaxSpeed=550, Part=nil},
+{Size=140, MinSpeed=551, MaxSpeed=600, Part=nil},
+{Size=150, MinSpeed=601, MaxSpeed=640, Part=nil},
+{Size=160, MinSpeed=641, MaxSpeed=670, Part=nil},
+{Size=170, MinSpeed=671, MaxSpeed=700, Part=nil},
+}
+
+-- VARIABLES
 local Character
 local HRP
-
---// State
-local Field
-local ParryUsed = false
 local CurrentTarget = nil
-local CurrentSize = BASE_SIZE
+local ParryUsed = false
 local ManualSpam = false
+local RenderConnections = {}
 
 -------------------------------------------------
--- Character Setup
+-- NOTIFICATION FUNCTION
 -------------------------------------------------
-local function SetupCharacter()
-	Character = Player.Character or Player.CharacterAdded:Wait()
-	HRP = Character:WaitForChild("HumanoidRootPart")
-
-	if Field then Field:Destroy() end
-
-	Field = Instance.new("Part")
-	Field.Shape = Enum.PartType.Ball
-	Field.Anchored = true
-	Field.CanCollide = false
-	Field.Transparency = 0.6
-	Field.Material = Enum.Material.SmoothPlastic
-	Field.Size = Vector3.new(BASE_SIZE, BASE_SIZE, BASE_SIZE)
-	Field.Parent = workspace
-
-	CurrentSize = BASE_SIZE
-end
-
-SetupCharacter()
-Player.CharacterAdded:Connect(function()
-	task.wait(1)
-	SetupCharacter()
-end)
-
--------------------------------------------------
--- Get Real Ball
--------------------------------------------------
-local function GetBall()
-	local folder = workspace:FindFirstChild("Balls")
-	if not folder then return end
-	for _,ball in pairs(folder:GetChildren()) do
-		if ball:GetAttribute("realBall") then
-			return ball
-		end
-	end
+local function Notify(title,text)
+    pcall(function()
+        StarterGui:SetCore("SendNotification",{Title=title,Text=text,Duration=4})
+    end)
 end
 
 -------------------------------------------------
--- Manual Spam Input
+-- KEY GUI
 -------------------------------------------------
-UIS.InputBegan:Connect(function(input, gp)
-	if gp then return end
-	if input.KeyCode == Enum.KeyCode.E then
-		ManualSpam = not ManualSpam
-	end
-end)
+local function CreateKeyGUI()
+    local gui = Instance.new("ScreenGui")
+    gui.ResetOnSpawn = false
+    gui.Parent = PlayerGui
 
-RunService.RenderStepped:Connect(function()
-	if ManualSpam then
-		VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
-		VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
-	end
-end)
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0,300,0,160)
+    frame.Position = UDim2.new(0.5,-150,0.5,-80)
+    frame.BackgroundColor3 = Color3.fromRGB(30,30,40)
+    frame.BackgroundTransparency = 1
+    frame.Parent = gui
+    Instance.new("UICorner",frame)
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1,0,0,40)
+    title.BackgroundTransparency = 1
+    title.Text = "ARBIX HUB"
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 22
+    title.TextColor3 = Color3.new(1,1,1)
+    title.TextTransparency = 1
+    title.Parent = frame
+
+    local box = Instance.new("TextBox")
+    box.Size = UDim2.new(0.8,0,0,35)
+    box.Position = UDim2.new(0.1,0,0.45,0)
+    box.PlaceholderText = "Enter Key"
+    box.BackgroundColor3 = Color3.fromRGB(50,50,60)
+    box.TextColor3 = Color3.new(1,1,1)
+    box.BackgroundTransparency = 1
+    box.TextTransparency = 1
+    box.Parent = frame
+    Instance.new("UICorner",box)
+
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.new(0.8,0,0,35)
+    button.Position = UDim2.new(0.1,0,0.72,0)
+    button.Text = "Unlock"
+    button.BackgroundColor3 = Color3.fromRGB(0,120,255)
+    button.TextColor3 = Color3.new(1,1,1)
+    button.BackgroundTransparency = 1
+    button.TextTransparency = 1
+    button.Parent = frame
+    Instance.new("UICorner",button)
+
+    -- Fade in
+    TweenService:Create(frame,TweenInfo.new(1.5),{BackgroundTransparency=0}):Play()
+    TweenService:Create(title,TweenInfo.new(1.5),{TextTransparency=0}):Play()
+    TweenService:Create(box,TweenInfo.new(1.5),{BackgroundTransparency=0,TextTransparency=0}):Play()
+    TweenService:Create(button,TweenInfo.new(1.5),{BackgroundTransparency=0,TextTransparency=0}):Play()
+
+    button.MouseButton1Click:Connect(function()
+        if box.Text:lower() ~= correctKey then
+            box.Text = ""
+            box.PlaceholderText = "Wrong Key"
+            return
+        end
+
+        -- Fade out
+        TweenService:Create(frame,TweenInfo.new(1.5),{BackgroundTransparency=1}):Play()
+        TweenService:Create(title,TweenInfo.new(1.5),{TextTransparency=1}):Play()
+        TweenService:Create(box,TweenInfo.new(1.5),{BackgroundTransparency=1,TextTransparency=1}):Play()
+        TweenService:Create(button,TweenInfo.new(1.5),{BackgroundTransparency=1,TextTransparency=1}):Play()
+
+        task.wait(1.5)
+        gui:Destroy()
+        Notify("ARBIX HUB","Script Loaded")
+
+        -- تشغيل السكربت بعد إدخال المفتاح
+        RunMainScript()
+    end)
+end
 
 -------------------------------------------------
--- Main System
+-- MAIN SCRIPT FUNCTION
 -------------------------------------------------
-RunService.RenderStepped:Connect(function()
-	if not HRP then return end
-	local Ball = GetBall()
-	if not Ball then return end
-	local Velocity = Ball.AssemblyLinearVelocity
-	if Ball:FindFirstChild("zoomies") then
-		Velocity = Ball.zoomies.VectorVelocity
-	end
+function RunMainScript()
 
-	local Speed = Velocity.Magnitude
-	if Speed <= 0 then return end
+    -------------------------------------------------
+    -- CHARACTER SETUP
+    -------------------------------------------------
+    local function SetupCharacter()
+        Character = Player.Character or Player.CharacterAdded:Wait()
+        HRP = Character:WaitForChild("HumanoidRootPart")
 
-	local Distance = (HRP.Position - Ball.Position).Magnitude
+        for _,f in ipairs(FIELDS) do
+            if f.Part then f.Part:Destroy() end
+            local p = Instance.new("Part")
+            p.Shape = Enum.PartType.Ball
+            p.Anchored = true
+            p.CanCollide = false
+            p.CastShadow = false
+            p.Transparency = FIELD_TRANSPARENCY
+            p.Material = Enum.Material.SmoothPlastic
+            p.Size = Vector3.new(f.Size,f.Size,f.Size)
+            p.Color = FIELD_COLOR
+            p.Parent = workspace
+            f.Part = p
+        end
+    end
 
-	--=== حساب الحجم التدريجي للمجال ===--
-	local PlayerSize = Character:GetExtentsSize().Magnitude
-	local DesiredSize = BASE_SIZE + (PlayerSize * 0.5) + (Speed * SPEED_FACTOR)
-	if DesiredSize > MAX_SIZE then DesiredSize = MAX_SIZE end
+    SetupCharacter()
+    Player.CharacterAdded:Connect(function()
+        task.wait(1)
+        SetupCharacter()
+    end)
 
-	-- تصحيح تدريجي
-	CurrentSize = CurrentSize + (DesiredSize - CurrentSize) * SMOOTH_FACTOR
-	Field.Size = Vector3.new(CurrentSize, CurrentSize, CurrentSize)
-	Field.Position = HRP.Position
+    -------------------------------------------------
+    -- GET REAL BALL
+    -------------------------------------------------
+    local function GetBall()
+        local folder = workspace:FindFirstChild("Balls")
+        if not folder then return end
+        for _,ball in pairs(folder:GetChildren()) do
+            if ball:GetAttribute("realBall") then return ball end
+        end
+    end
 
-	--=== نظام Parry ===--
-	local Target = Ball:GetAttribute("target")
-	if Target ~= CurrentTarget then
-		ParryUsed = false
-		CurrentTarget = Target
-	end
+    -------------------------------------------------
+    -- DO PARRY
+    -------------------------------------------------
+    local function DoParry()
+        VirtualInputManager:SendMouseButtonEvent(0,0,0,true,game,0)
+    end
 
-	local Radius = CurrentSize / 2
-	local DistanceToField = math.max(Distance - Radius, 0)
+    -------------------------------------------------
+    -- MANUAL SPAM
+    -------------------------------------------------
+    UIS.InputBegan:Connect(function(input,gp)
+        if gp then return end
+        if input.KeyCode == MANUAL_SPAM_KEY then
+            ManualSpam = not ManualSpam
+        end
+    end)
 
-	local Ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
-	local TimeToField = (DistanceToField / Speed) - Ping
+    RunService.RenderStepped:Connect(function()
+        if ManualSpam then
+            for _,f in ipairs(FIELDS) do
+                if f.Part then
+                    for i = 1, 2 do
+                        VirtualInputManager:SendKeyEvent(true, AUTO_PRESS_KEY, false, game)
+                        VirtualInputManager:SendKeyEvent(false, AUTO_PRESS_KEY, false, game)
+                    end
+                end
+            end
+        end
+    end)
 
-	-- Projection للتأكد من اقتراب الكرة
-	local DirectionToPlayer = (HRP.Position - Ball.Position).Unit
-	local VelocityTowardsPlayer = Velocity:Dot(DirectionToPlayer)
-	local IsApproaching = VelocityTowardsPlayer > 0
+    -------------------------------------------------
+    -- MAIN LOOP
+    -------------------------------------------------
+    local mainLoop
+    mainLoop = RunService.RenderStepped:Connect(function()
+        if not HRP then return end
 
-	-- Parry يحدث قبل الاصطدام مباشرة
-	if Target == Player.Name
-	and not ParryUsed
-	and IsApproaching
-	and (DistanceToField <= FIELD_BUFFER or TimeToField <= PARRY_MARGIN) then
+        local Ball = GetBall()
+        if not Ball then return end
 
-		VirtualInputManager:SendMouseButtonEvent(0,0,0,true,game,0)
-		ParryUsed = true
-	end
-end)
+        local Velocity = Ball.AssemblyLinearVelocity
+        local Speed = math.min(Velocity.Magnitude, MAX_SPEED)
+        if Speed <= 0 then return end
+
+        local Distance = (HRP.Position - Ball.Position).Magnitude
+        if Distance > SAFE_DISTANCE then return end
+
+        local Ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
+        local Target = Ball:GetAttribute("target")
+
+        if Target ~= CurrentTarget then
+            ParryUsed=false
+            CurrentTarget=Target
+        end
+
+        if Target ~= Player.Name then return end
+
+        local Direction=(HRP.Position-Ball.Position).Unit
+        local VelocityTowards=Velocity:Dot(Direction)
+        if VelocityTowards <= 0 then return end
+
+        -- تحديث موضع المجالات
+        for _,f in ipairs(FIELDS) do
+            if f.Part then
+                f.Part.CFrame = HRP.CFrame
+                f.Part.Color = FIELD_COLOR
+            end
+        end
+
+        -- تحديد المجال الرئيسي حسب سرعة الكرة
+        local MainFieldIndex=nil
+        for i,f in ipairs(FIELDS) do
+            if Speed >= f.MinSpeed and Speed <= f.MaxSpeed then
+                MainFieldIndex = i
+                break
+            end
+        end
+        if not MainFieldIndex then return end
+
+        -- Parry
+        for i=MainFieldIndex,1,-1 do
+            local f = FIELDS[i]
+            if not f.Part then continue end
+            local Radius = f.Part.Size.X/2
+            local DistanceToField = math.max(Distance-Radius,0)
+            local TimeToField = (DistanceToField/Speed) - Ping
+            local BallInside = (Distance <= Radius)
+
+            if (BallInside or TimeToField <= PARRY_MARGIN) and not ParryUsed then
+                DoParry()
+                ParryUsed=true
+            end
+        end
+    end)
+
+    table.insert(RenderConnections, mainLoop)
+end
+
+-------------------------------------------------
+-- RUN KEY GUI
+-------------------------------------------------
+CreateKeyGUI()
