@@ -1,4 +1,4 @@
---// ARBIX HUB RTX V1 WITH RAINBOW TITLE
+--// ARBIX HUB RTX V1 WITH RAINBOW TITLE (ANTI-LAGBACK + ADAPTIVE SPEED + SMART PATHING)
 
 if getgenv().ARBIX_RUNNING then
     if getgenv().ARBIX_STOP then getgenv().ARBIX_STOP() end
@@ -9,16 +9,17 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
+local Stats = game:GetService("Stats")
 
 local player = Players.LocalPlayer
 
 -- CONFIG
 local config = {
-    horizontalSpeed = 30,
-    verticalSpeed = 50,
-    maxHeight = 16,
-    stopDistance = 6,
-    correctKey = "arbix hub"
+    baseHorizontalSpeed = 30,
+    verticalSpeed = 35,
+    flyHeight = 14,
+    stopHorizontalDistance = 2.8, -- التوقف عند الوصول فوق الدلفري
+    correctKey = "arbix hub",
 }
 
 -- VARIABLES
@@ -28,9 +29,10 @@ local currentVelocity = Vector3.zero
 local lastDir = Vector3.zero
 local flyButton
 local gui
-local flight = false
 
--- STOP FUNCTION FOR NEW SCRIPT
+local speedFactor = 0
+
+-- STOP FUNCTION
 getgenv().ARBIX_STOP = function()
     moving = false
     if gui then gui:Destroy() end
@@ -45,23 +47,53 @@ end
 if player.Character then SetupCharacter(player.Character) end
 player.CharacterAdded:Connect(SetupCharacter)
 
--- SMOOTH FUNCTIONS
-local function Smooth(current,target,alpha)
-    return current:Lerp(target,alpha)
+-- UTILS
+local function Smooth(a,b,t)
+    return a:Lerp(b,t)
 end
+
 local function StabilizeDirection(dir)
     if lastDir.Magnitude == 0 then
         lastDir = dir
         return dir
     end
-    lastDir = lastDir:Lerp(dir,0.25)
+    lastDir = lastDir:Lerp(dir,0.2)
     return lastDir
+end
+
+-- GET PING
+local function GetPing()
+    local ok, ping = pcall(function()
+        return Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+    end)
+    if ok and ping then
+        return ping
+    end
+    return 60
+end
+
+-- ADAPTIVE SPEED
+local function GetAdaptiveSpeed()
+    local ping = GetPing()
+
+    local modifier = 1
+
+    if ping > 150 then
+        modifier = 0.72
+    elseif ping > 100 then
+        modifier = 0.82
+    elseif ping > 70 then
+        modifier = 0.9
+    end
+
+    return config.baseHorizontalSpeed * modifier
 end
 
 -- FIND DELIVERY
 local function FindTarget()
     local plots = Workspace:FindFirstChild("Plots")
     if not plots then return end
+
     for _, plot in pairs(plots:GetChildren()) do
         local sign = plot:FindFirstChild("PlotSign")
         if sign then
@@ -73,84 +105,154 @@ local function FindTarget()
     end
 end
 
--- ARC MOVE
+-- SMART PATHING OFFSET
+local function GetPathOffset()
+    return Vector3.new(
+        math.sin(tick()*2.1)*0.6,
+        0,
+        math.cos(tick()*1.7)*0.6
+    )
+end
+
+-- MAIN MOVEMENT
 local function MoveToTarget(target)
+
     if not hrp or not target then return end
+
     moving = true
     flyButton.Text = "Stop"
 
-    local startPos = hrp.Position
+    local lifted = false
     local endPos = target.Position
-    local totalDistance = (endPos - startPos).Magnitude
-    local traveled = 0
+
+    speedFactor = 0
 
     while moving and target.Parent do
-        local dt = RunService.Heartbeat:Wait()
-        local pos = hrp.Position
-        local dir = endPos - pos
-        local dist = dir.Magnitude
-        if dist <= config.stopDistance then break end
 
-        dir = StabilizeDirection(dir)
-        local horizontalDir = Vector3.new(dir.X,0,dir.Z)
-        local horizontal = Vector3.zero
-        if horizontalDir.Magnitude > 0.1 then
-            horizontal = horizontalDir.Unit * config.horizontalSpeed
+        local dt = RunService.Heartbeat:Wait()
+
+        local pos = hrp.Position
+        local smartOffset = GetPathOffset()
+        local targetPos = endPos + smartOffset
+
+        local dir = targetPos - pos
+
+        -- المسافة الأفقية فقط
+        local horizontalDist = (Vector3.new(pos.X,0,pos.Z) - Vector3.new(endPos.X,0,endPos.Z)).Magnitude
+
+        if horizontalDist <= config.stopHorizontalDistance then
+            break
         end
 
-        traveled += horizontal.Magnitude * dt
-        local progress = math.clamp(traveled / totalDistance,0,1)
-        local arcHeight = math.sin(progress * math.pi) * config.maxHeight
-        local targetY = math.max(startPos.Y,endPos.Y) + arcHeight
+        dir = StabilizeDirection(dir)
 
-        -- FULL VERTICAL SPEED
-        local verticalError = targetY - pos.Y
-        local vertical = verticalError / math.max(dt,0.001)
-        vertical = math.clamp(vertical,-config.verticalSpeed,config.verticalSpeed)
+        -- acceleration
+        speedFactor = math.clamp(speedFactor + dt*1.6,0,1)
 
-        local targetVelocity = Vector3.new(horizontal.X,vertical,horizontal.Z)
-        currentVelocity = Smooth(currentVelocity,targetVelocity,math.clamp(dt*6,0,1))
+        local baseSpeed = GetAdaptiveSpeed()
+
+        -- natural speed fluctuation
+        local variation = math.sin(tick()*6)*0.08 + (math.random()-0.5)*0.05
+
+        local speed = baseSpeed * (speedFactor + variation)
+
+        -- Anti-lagback speed cap
+        speed = math.clamp(speed,0,34)
+
+        -- horizontal
+        local horizontalDir = Vector3.new(dir.X,0,dir.Z)
+        local horizontal = Vector3.zero
+
+        if horizontalDir.Magnitude > 0.1 then
+            horizontal = horizontalDir.Unit * speed
+        end
+
+        local vertical = 0
+
+        -- lift
+        if not lifted then
+
+            local err = config.flyHeight - pos.Y
+            vertical = math.clamp(err*2,-config.verticalSpeed,config.verticalSpeed)
+
+            if math.abs(err) < 0.6 then
+                lifted = true
+            end
+
+        end
+
+        -- jitter
+        local jitter = Vector3.new(
+            (math.random()-0.5)*0.22,
+            (math.random()-0.5)*0.06,
+            (math.random()-0.5)*0.22
+        )
+
+        local targetVelocity = Vector3.new(horizontal.X,vertical,horizontal.Z) + jitter
+
+        currentVelocity = Smooth(currentVelocity,targetVelocity,math.clamp(dt*4,0,1))
+
         hrp.AssemblyLinearVelocity = currentVelocity
+
     end
 
     hrp.AssemblyLinearVelocity = Vector3.zero
     moving = false
     flyButton.Text = "Fly to Delivery"
+
 end
 
--- DRAGGABLE GUI
+-- DRAG SYSTEM
 local function MakeDraggable(frame)
+
     local dragging, dragInput, dragStart, startPos
+
     frame.InputBegan:Connect(function(input)
+
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
+
             dragging = true
             dragStart = input.Position
             startPos = frame.Position
+
             input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then
                     dragging = false
                 end
             end)
+
         end
     end)
+
     frame.InputChanged:Connect(function(input)
+
         if input.UserInputType == Enum.UserInputType.MouseMovement then
             dragInput = input
         end
+
     end)
+
     RunService.RenderStepped:Connect(function()
+
         if dragging and dragInput then
+
             local delta = dragInput.Position - dragStart
+
             frame.Position = UDim2.new(
-                startPos.X.Scale, startPos.X.Offset + delta.X,
-                startPos.Y.Scale, startPos.Y.Offset + delta.Y
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
             )
+
         end
     end)
+
 end
 
 -- MAIN GUI
 local function CreateMainGUI()
+
     gui = Instance.new("ScreenGui")
     gui.Name = "ARBIX_HUB_GUI"
     gui.ResetOnSpawn = false
@@ -163,9 +265,9 @@ local function CreateMainGUI()
     frame.BackgroundColor3 = Color3.fromRGB(20,20,30)
     frame.Parent = gui
     Instance.new("UICorner",frame)
+
     MakeDraggable(frame)
 
-    -- RAINBOW TITLE
     local title = Instance.new("TextLabel")
     title.Size = UDim2.new(1,0,0,40)
     title.Position = UDim2.new(0,0,0,10)
@@ -176,7 +278,6 @@ local function CreateMainGUI()
     title.TextColor3 = Color3.fromRGB(255,0,0)
     title.Parent = frame
 
-    -- SCRIPT BY SPARKLINEDEV
     local subtitle = Instance.new("TextLabel")
     subtitle.Size = UDim2.new(1,0,0,20)
     subtitle.Position = UDim2.new(0,0,0,50)
@@ -187,7 +288,6 @@ local function CreateMainGUI()
     subtitle.TextColor3 = Color3.fromRGB(180,180,180)
     subtitle.Parent = frame
 
-    -- FLY BUTTON
     flyButton = Instance.new("TextButton")
     flyButton.Size = UDim2.new(0.8,0,0,35)
     flyButton.Position = UDim2.new(0.1,0,0.7,0)
@@ -200,8 +300,14 @@ local function CreateMainGUI()
     Instance.new("UICorner",flyButton)
 
     flyButton.MouseButton1Click:Connect(function()
-        if moving then moving = false return end
+
+        if moving then
+            moving = false
+            return
+        end
+
         local target = FindTarget()
+
         if target then
             MoveToTarget(target)
         else
@@ -209,24 +315,34 @@ local function CreateMainGUI()
             wait(2)
             flyButton.Text = "Fly to Delivery"
         end
+
     end)
 
-    -- RAINBOW EFFECT
+    -- RAINBOW TITLE
     spawn(function()
+
         local t = 0
+
         while gui.Parent do
+
             t += 0.03
+
             local r = math.floor((math.sin(t)+1)*127)
-            local g = math.floor((math.sin(t + 2)*127)+128)
-            local b = math.floor((math.sin(t + 4)*127)+128)
+            local g = math.floor((math.sin(t+2)+1)*127)
+            local b = math.floor((math.sin(t+4)+1)*127)
+
             title.TextColor3 = Color3.fromRGB(r,g,b)
+
             RunService.RenderStepped:Wait()
+
         end
     end)
+
 end
 
 -- KEY SYSTEM
 local function ShowKeySystem()
+
     local keyGUI = Instance.new("ScreenGui")
     keyGUI.Name = "ScriptKeyGUI"
     keyGUI.ResetOnSpawn = false
@@ -239,6 +355,7 @@ local function ShowKeySystem()
     frame.BackgroundColor3 = Color3.fromRGB(25,25,35)
     frame.Parent = keyGUI
     Instance.new("UICorner",frame)
+
     MakeDraggable(frame)
 
     local title = Instance.new("TextLabel")
@@ -275,6 +392,7 @@ local function ShowKeySystem()
     Instance.new("UICorner",button)
 
     button.MouseButton1Click:Connect(function()
+
         if box.Text == config.correctKey then
             keyGUI:Destroy()
             CreateMainGUI()
@@ -282,7 +400,9 @@ local function ShowKeySystem()
             box.Text = ""
             box.PlaceholderText = "Wrong Key"
         end
+
     end)
+
 end
 
 -- START
