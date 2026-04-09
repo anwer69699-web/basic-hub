@@ -1,23 +1,26 @@
---[[ FR LITE - AsLinearVelocity Version ]]
+--[[ FR HUB LITE - Close & Minimize ]]
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local StarterGui = game:GetService("StarterGui")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer
 
-if _G.FRLITE then return end
-_G.FRLITE = true
+if _G.FRHUB_LITE then return end
+_G.FRHUB_LITE = true
 
 -- Settings
-local AutoLeft = false
-local AutoRight = false
-local InstaSteal = false
-local DesyncKill = false
-local DesyncSafe = false
-local Speed = 58
+local Settings = {
+    AutoLeft = false,
+    AutoRight = false,
+    InstaSteal = false,
+    Desync = false,
+    SpeedNormal = 40,
+    SpeedSteal = 25
+}
 
 -- Points
 local LEFT_POINTS = {
@@ -34,278 +37,424 @@ local RIGHT_POINTS = {
     Vector3.new(-474.55, -7.30, 23.52)
 }
 
+-- Variables
 local CurrentVel = nil
-local AutoIdx = 1
-local LastTime = 0
-local StealConn = nil
+local AutoIndex = 1
+local LastAutoTime = 0
+local StealConnection = nil
+local IsMinimized = false
+local IsClosed = false
 
--- UI
-local gui = Instance.new("ScreenGui")
-gui.Name = "FRLITE"
-gui.Parent = game.CoreGui
-
-local main = Instance.new("Frame")
-main.Size = UDim2.new(0, 160, 0, 220)
-main.Position = UDim2.new(0, 10, 0, 100)
-main.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-main.Parent = gui
-
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, 0, 0, 30)
-title.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
-title.Text = "FR LITE"
-title.TextColor3 = Color3.new(1, 1, 1)
-title.Parent = main
-
-local function makeBtn(txt, y, c)
-    local b = Instance.new("TextButton")
-    b.Size = UDim2.new(0.9, 0, 0, 30)
-    b.Position = UDim2.new(0.05, 0, 0, y)
-    b.BackgroundColor3 = Color3.fromRGB(65, 65, 65)
-    b.Text = txt .. ": OFF"
-    b.TextColor3 = Color3.new(1, 1, 1)
-    b.Parent = main
-    return b, c
-end
-
-local bL, cL = makeBtn("LEFT", 40, Color3.fromRGB(0, 200, 0))
-local bR, cR = makeBtn("RIGHT", 75, Color3.fromRGB(0, 150, 255))
-local bS, cS = makeBtn("STEAL", 110, Color3.fromRGB(255, 150, 0))
-local bDK, cDK = makeBtn("D-KILL", 145, Color3.fromRGB(200, 0, 0))
-local bDS, cDS = makeBtn("D-SAFE", 180, Color3.fromRGB(150, 0, 200))
-
--- Functions
-local function getHrp()
-    local c = LocalPlayer.Character
-    if c then return c:FindFirstChild("HumanoidRootPart") end
+-- Get HRP
+local function GetHRP()
+    local char = LocalPlayer.Character
+    if char then return char:FindFirstChild("HumanoidRootPart") end
     return nil
 end
 
--- AsLinearVelocity - الأفضل للجوال
-local function makeVel()
-    local h = getHrp()
-    if not h then return end
+-- Create Velocity
+local function CreateVelocity()
+    local hrp = GetHRP()
+    if not hrp then return nil end
     
-    -- حذف القديم
-    if CurrentVel then
-        CurrentVel:Destroy()
-        CurrentVel = nil
-    end
+    if CurrentVel then CurrentVel:Destroy() end
     
-    -- حذف أي LinearVelocity موجود
-    for _, v in pairs(h:GetChildren()) do
-        if v:IsA("LinearVelocity") then
+    for _, v in pairs(hrp:GetChildren()) do
+        if v:IsA("BodyVelocity") or v:IsA("LinearVelocity") then
             v:Destroy()
         end
     end
     
-    -- إنشاء AsLinearVelocity جديد
-    local vel = Instance.new("LinearVelocity")
-    vel.Attachment0 = h:FindFirstChild("RootAttachment") or h:FindFirstChild("Attachment")
-    
-    -- إذا ما فيه Attachment نسوي واحد
-    if not vel.Attachment0 then
-        local att = Instance.new("Attachment")
-        att.Name = "RootAttachment"
-        att.Parent = h
-        vel.Attachment0 = att
-    end
-    
-    vel.VectorVelocity = Vector3.zero
-    vel.MaxForce = math.huge
-    vel.LineDirection = Vector3.new(0, 0, 0)
-    vel.LineVelocity = 0
-    vel.Parent = h
+    local vel = Instance.new("BodyVelocity")
+    vel.MaxForce = Vector3.new(400000, 400000, 400000)
+    vel.Velocity = Vector3.zero
+    vel.P = 10000
+    vel.Parent = hrp
     
     CurrentVel = vel
     return vel
 end
 
-local function delVel()
+local function RemoveVelocity()
     if CurrentVel then
         CurrentVel:Destroy()
         CurrentVel = nil
     end
 end
 
-local function setVel(direction, speed)
-    if not CurrentVel then return end
-    CurrentVel.VectorVelocity = direction * speed
+-- Check if has ball
+local function HasBall()
+    local char = LocalPlayer.Character
+    if not char then return false end
+    return char:FindFirstChild("Basketball") ~= nil
 end
 
-local function stopVel()
-    if CurrentVel then
-        CurrentVel.VectorVelocity = Vector3.zero
-    end
-end
-
-local function steal()
-    local ball = Workspace:FindFirstChild("Basketball")
-    if not ball then return end
-    local own = ball:FindFirstChild("Owner")
-    if not own then return end
-    if own.Value ~= LocalPlayer then
-        for i = 1, 5 do
-            pcall(function()
-                ReplicatedStorage.Events.BallEvent:FireServer("Grab", ball)
-            end)
-        end
-    end
-end
-
--- Toggles
-bL.MouseButton1Click:Connect(function()
-    AutoLeft = not AutoLeft
-    if AutoLeft then
-        bL.BackgroundColor3 = cL
-        bL.Text = "LEFT: ON"
-        AutoRight = false
-        bR.BackgroundColor3 = Color3.fromRGB(65, 65, 65)
-        bR.Text = "RIGHT: OFF"
-        makeVel()
+-- Get current speed
+local function GetSpeed()
+    if HasBall() then
+        return Settings.SpeedSteal
     else
-        bL.BackgroundColor3 = Color3.fromRGB(65, 65, 65)
-        bL.Text = "LEFT: OFF"
-        delVel()
+        return Settings.SpeedNormal
+    end
+end
+
+-- UI
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "FRHUB_LITE"
+ScreenGui.Parent = game.CoreGui
+ScreenGui.ResetOnSpawn = false
+
+local Main = Instance.new("Frame")
+Main.Size = UDim2.new(0, 200, 0, 270)
+Main.Position = UDim2.new(0.5, -100, 0.5, -135)
+Main.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+Main.BorderSizePixel = 0
+Main.Active = true
+Main.Parent = ScreenGui
+
+local Corner1 = Instance.new("UICorner")
+Corner1.CornerRadius = UDim.new(0, 6)
+Corner1.Parent = Main
+
+-- Title Bar (Draggable area)
+local TitleBar = Instance.new("Frame")
+TitleBar.Size = UDim2.new(1, 0, 0, 30)
+TitleBar.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+TitleBar.BorderSizePixel = 0
+TitleBar.Parent = Main
+
+local Corner2 = Instance.new("UICorner")
+Corner2.CornerRadius = UDim.new(0, 6)
+Corner2.Parent = TitleBar
+
+-- Title Text
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -60, 1, 0)
+Title.Position = UDim2.new(0, 5, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "FR HUB LITE"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 14
+Title.Font = Enum.Font.SourceSansBold
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = TitleBar
+
+-- Minimize Button (-)
+local MinBtn = Instance.new("TextButton")
+MinBtn.Size = UDim2.new(0, 25, 0, 25)
+MinBtn.Position = UDim2.new(1, -55, 0, 2)
+MinBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+MinBtn.Text = "-"
+MinBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinBtn.TextSize = 18
+MinBtn.Font = Enum.Font.SourceSansBold
+MinBtn.Parent = TitleBar
+
+local MinCorner = Instance.new("UICorner")
+MinCorner.CornerRadius = UDim.new(0, 4)
+MinCorner.Parent = MinBtn
+
+-- Close Button (X)
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 25, 0, 25)
+CloseBtn.Position = UDim2.new(1, -28, 0, 2)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+CloseBtn.Text = "X"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.TextSize = 14
+CloseBtn.Font = Enum.Font.SourceSansBold
+CloseBtn.Parent = TitleBar
+
+local CloseCorner = Instance.new("UICorner")
+CloseCorner.CornerRadius = UDim.new(0, 4)
+CloseCorner.Parent = CloseBtn
+
+-- Content Frame (for minimize)
+local Content = Instance.new("Frame")
+Content.Size = UDim2.new(1, 0, 1, -30)
+Content.Position = UDim2.new(0, 0, 0, 30)
+Content.BackgroundTransparency = 1
+Content.Parent = Main
+
+-- Location Box
+local LocationBox = Instance.new("TextLabel")
+LocationBox.Size = UDim2.new(0.9, 0, 0, 25)
+LocationBox.Position = UDim2.new(0.05, 0, 0, 5)
+LocationBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+LocationBox.Text = "Loc: Waiting..."
+LocationBox.TextColor3 = Color3.fromRGB(0, 255, 0)
+LocationBox.TextSize = 11
+LocationBox.Font = Enum.Font.SourceSans
+LocationBox.Parent = Content
+
+local CornerLoc = Instance.new("UICorner")
+CornerLoc.CornerRadius = UDim.new(0, 4)
+CornerLoc.Parent = LocationBox
+
+-- Create Button
+local function CreateButton(text, y, color)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.9, 0, 0, 30)
+    btn.Position = UDim2.new(0.05, 0, 0, y)
+    btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    btn.Text = text .. ": OFF"
+    btn.TextColor3 = Color3.fromRGB(200, 200, 200)
+    btn.TextSize = 12
+    btn.Font = Enum.Font.SourceSans
+    btn.Parent = Content
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 4)
+    corner.Parent = btn
+    
+    return btn, color
+end
+
+-- Buttons
+local btnLeft, colLeft = CreateButton("Auto Left", 35, Color3.fromRGB(0, 200, 0))
+local btnRight, colRight = CreateButton("Auto Right", 70, Color3.fromRGB(0, 150, 255))
+local btnSteal, colSteal = CreateButton("Insta Steal", 105, Color3.fromRGB(255, 150, 0))
+local btnDesync, colDesync = CreateButton("Desync", 140, Color3.fromRGB(200, 0, 0))
+local btnFPS, colFPS = CreateButton("FPS Boost", 175, Color3.fromRGB(255, 200, 0))
+
+-- Dragging System
+local dragging = false
+local dragStart = nil
+local startPos = nil
+
+local function startDrag(input)
+    dragging = true
+    dragStart = input.Position
+    startPos = Main.Position
+end
+
+local function updateDrag(input)
+    if dragging then
+        local delta = input.Position - dragStart
+        Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end
+
+local function endDrag()
+    dragging = false
+end
+
+-- PC & Mobile support
+TitleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        startDrag(input)
     end
 end)
 
-bR.MouseButton1Click:Connect(function()
-    AutoRight = not AutoRight
-    if AutoRight then
-        bR.BackgroundColor3 = cR
-        bR.Text = "RIGHT: ON"
-        AutoLeft = false
-        bL.BackgroundColor3 = Color3.fromRGB(65, 65, 65)
-        bL.Text = "LEFT: OFF"
-        makeVel()
-    else
-        bR.BackgroundColor3 = Color3.fromRGB(65, 65, 65)
-        bR.Text = "RIGHT: OFF"
-        delVel()
+TitleBar.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        updateDrag(input)
     end
 end)
 
-bS.MouseButton1Click:Connect(function()
-    InstaSteal = not InstaSteal
-    if InstaSteal then
-        bS.BackgroundColor3 = cS
-        bS.Text = "STEAL: ON"
-        StealConn = RunService.Heartbeat:Connect(function()
-            if InstaSteal then steal() end
+TitleBar.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        endDrag()
+    end
+end)
+
+-- Minimize Function
+MinBtn.MouseButton1Click:Connect(function()
+    IsMinimized = not IsMinimized
+    if IsMinimized then
+        Content.Visible = false
+        Main.Size = UDim2.new(0, 200, 0, 30)
+        MinBtn.Text = "+"
+    else
+        Content.Visible = true
+        Main.Size = UDim2.new(0, 200, 0, 270)
+        MinBtn.Text = "-"
+    end
+end)
+
+-- Close Function
+CloseBtn.MouseButton1Click:Connect(function()
+    IsClosed = true
+    ScreenGui.Enabled = false
+    
+    -- Stop all systems
+    Settings.AutoLeft = false
+    Settings.AutoRight = false
+    Settings.InstaSteal = false
+    Settings.Desync = false
+    
+    RemoveVelocity()
+    
+    if StealConnection then
+        StealConnection:Disconnect()
+        StealConnection = nil
+    end
+end)
+
+-- Toggle Function
+local function Toggle(btn, setting, onText, onColor)
+    Settings[setting] = not Settings[setting]
+    if Settings[setting] then
+        btn.BackgroundColor3 = onColor
+        btn.Text = onText .. ": ON"
+        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    else
+        btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        btn.Text = onText .. ": OFF"
+        btn.TextColor3 = Color3.fromRGB(200, 200, 200)
+    end
+    return Settings[setting]
+end
+
+-- Click Events
+btnLeft.MouseButton1Click:Connect(function()
+    local state = Toggle(btnLeft, "AutoLeft", "Auto Left", colLeft)
+    if state then
+        Settings.AutoRight = false
+        btnRight.Text = "Auto Right: OFF"
+        btnRight.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        btnRight.TextColor3 = Color3.fromRGB(200, 200, 200)
+        CreateVelocity()
+    else
+        RemoveVelocity()
+    end
+end)
+
+btnRight.MouseButton1Click:Connect(function()
+    local state = Toggle(btnRight, "AutoRight", "Auto Right", colRight)
+    if state then
+        Settings.AutoLeft = false
+        btnLeft.Text = "Auto Left: OFF"
+        btnLeft.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        btnLeft.TextColor3 = Color3.fromRGB(200, 200, 200)
+        CreateVelocity()
+    else
+        RemoveVelocity()
+    end
+end)
+
+btnSteal.MouseButton1Click:Connect(function()
+    local state = Toggle(btnSteal, "InstaSteal", "Insta Steal", colSteal)
+    if state then
+        StealConnection = RunService.Heartbeat:Connect(function()
+            if Settings.InstaSteal then
+                local ball = Workspace:FindFirstChild("Basketball")
+                if ball and ball:FindFirstChild("Owner") and ball.Owner.Value ~= LocalPlayer then
+                    pcall(function()
+                        ReplicatedStorage.Events.BallEvent:FireServer("Grab", ball)
+                    end)
+                end
+            end
         end)
     else
-        bS.BackgroundColor3 = Color3.fromRGB(65, 65, 65)
-        bS.Text = "STEAL: OFF"
-        if StealConn then StealConn:Disconnect() StealConn = nil end
+        if StealConnection then
+            StealConnection:Disconnect()
+            StealConnection = nil
+        end
     end
 end)
 
-bDK.MouseButton1Click:Connect(function()
-    DesyncKill = not DesyncKill
-    if DesyncKill then
-        bDK.BackgroundColor3 = cDK
-        bDK.Text = "D-KILL: ON"
-        DesyncSafe = false
-        bDS.BackgroundColor3 = Color3.fromRGB(65, 65, 65)
-        bDS.Text = "D-SAFE: OFF"
+btnDesync.MouseButton1Click:Connect(function()
+    Toggle(btnDesync, "Desync", "Desync", colDesync)
+end)
+
+btnFPS.MouseButton1Click:Connect(function()
+    local state = Toggle(btnFPS, "FPSBoost", "FPS Boost", colFPS)
+    if state then
+        settings().Rendering.QualityLevel = 1
+        Workspace.GlobalShadows = false
+        for _, obj in pairs(Workspace:GetDescendants()) do
+            if obj:IsA("ParticleEmitter") or obj:IsA("Trail") then
+                obj.Enabled = false
+            elseif obj:IsA("Decal") or obj:IsA("Texture") then
+                obj:Destroy()
+            elseif obj:IsA("BasePart") then
+                obj.Material = Enum.Material.Plastic
+                obj.Reflectance = 0
+            end
+        end
     else
-        bDK.BackgroundColor3 = Color3.fromRGB(65, 65, 65)
-        bDK.Text = "D-KILL: OFF"
+        settings().Rendering.QualityLevel = 5
+        Workspace.GlobalShadows = true
     end
 end)
 
-bDS.MouseButton1Click:Connect(function()
-    DesyncSafe = not DesyncSafe
-    if DesyncSafe then
-        bDS.BackgroundColor3 = cDS
-        bDS.Text = "D-SAFE: ON"
-        DesyncKill = false
-        bDK.BackgroundColor3 = Color3.fromRGB(65, 65, 65)
-        bDK.Text = "D-KILL: OFF"
-    else
-        bDS.BackgroundColor3 = Color3.fromRGB(65, 65, 65)
-        bDS.Text = "D-SAFE: OFF"
-    end
-end)
-
--- Main Loop - AsLinearVelocity Movement
+-- Main Loop
 RunService.Heartbeat:Connect(function()
-    local hrp = getHrp()
-    if not hrp then delVel() return end
+    if IsClosed then return end
     
-    -- Auto Left - حركة سلسة بـ AsLinearVelocity
-    if AutoLeft and tick() - LastTime > 0.08 then
-        AutoIdx = AutoIdx + 1
-        if AutoIdx > #LEFT_POINTS then AutoIdx = 1 end
-        
-        local target = LEFT_POINTS[AutoIdx]
-        local distance = (target - hrp.Position).Magnitude
-        
-        if distance > 5 then
-            -- حركة سلسة بـ AsLinearVelocity
-            local direction = (target - hrp.Position).Unit
-            setVel(direction, Speed)
-        else
-            -- وصل للهدف، روح للنقطة الجاية
-            AutoIdx = AutoIdx + 1
-            if AutoIdx > #LEFT_POINTS then AutoIdx = 1 end
-            target = LEFT_POINTS[AutoIdx]
-            local newDir = (target - hrp.Position).Unit
-            setVel(newDir, Speed)
-        end
-        
-        LastTime = tick()
+    local char = LocalPlayer.Character
+    if not char then 
+        RemoveVelocity()
+        return 
     end
     
-    -- Auto Right - حركة سلسة بـ AsLinearVelocity
-    if AutoRight and tick() - LastTime > 0.08 then
-        AutoIdx = AutoIdx + 1
-        if AutoIdx > #RIGHT_POINTS then AutoIdx = 1 end
-        
-        local target = RIGHT_POINTS[AutoIdx]
-        local distance = (target - hrp.Position).Magnitude
-        
-        if distance > 5 then
-            local direction = (target - hrp.Position).Unit
-            setVel(direction, Speed)
-        else
-            AutoIdx = AutoIdx + 1
-            if AutoIdx > #RIGHT_POINTS then AutoIdx = 1 end
-            target = RIGHT_POINTS[AutoIdx]
-            local newDir = (target - hrp.Position).Unit
-            setVel(newDir, Speed)
-        end
-        
-        LastTime = tick()
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then 
+        RemoveVelocity()
+        return 
     end
     
-    -- إيقاف الحركة إذا ما فيه Auto
-    if not AutoLeft and not AutoRight then
-        stopVel()
+    -- Update Location Box
+    local pos = hrp.Position
+    LocationBox.Text = string.format("X: %.1f | Y: %.1f | Z: %.1f", pos.X, pos.Y, pos.Z)
+    
+    -- Auto Left
+    if Settings.AutoLeft and tick() - LastAutoTime > 0.15 then
+        AutoIndex = AutoIndex + 1
+        if AutoIndex > #LEFT_POINTS then AutoIndex = 1 end
+        
+        local target = LEFT_POINTS[AutoIndex]
+        local direction = (target - hrp.Position).Unit
+        local speed = GetSpeed()
+        
+        if CurrentVel then
+            CurrentVel.Velocity = direction * speed
+        end
+        
+        LastAutoTime = tick()
+    end
+    
+    -- Auto Right
+    if Settings.AutoRight and tick() - LastAutoTime > 0.15 then
+        AutoIndex = AutoIndex + 1
+        if AutoIndex > #RIGHT_POINTS then AutoIndex = 1 end
+        
+        local target = RIGHT_POINTS[AutoIndex]
+        local direction = (target - hrp.Position).Unit
+        local speed = GetSpeed()
+        
+        if CurrentVel then
+            CurrentVel.Velocity = direction * speed
+        end
+        
+        LastAutoTime = tick()
+    end
+    
+    -- Stop velocity when not in use
+    if not Settings.AutoLeft and not Settings.AutoRight and CurrentVel then
+        CurrentVel.Velocity = Vector3.zero
     end
     
     -- Desync
-    if DesyncKill then
+    if Settings.Desync then
         hrp.CFrame = hrp.CFrame + Vector3.new(math.random(-20, 20), math.random(-5, 5), math.random(-20, 20))
-    end
-    
-    if DesyncSafe then
-        hrp.CFrame = hrp.CFrame + Vector3.new(math.random(-8, 8), 0, math.random(-8, 8))
     end
 end)
 
 -- Respawn
 LocalPlayer.CharacterAdded:Connect(function()
     task.wait(0.5)
-    if AutoLeft or AutoRight then makeVel() end
+    if Settings.AutoLeft or Settings.AutoRight then
+        CreateVelocity()
+    end
 end)
 
--- Notify
+-- Notification
 pcall(function()
     StarterGui:SetCore("SendNotification", {
-        Title = "FR LITE",
-        Text = "AsLinearVelocity Ready!",
-        Duration = 3
+        Title = "FR HUB LITE",
+        Text = "Drag title to move! (-) to minimize",
+        Duration = 4
     })
 end)
