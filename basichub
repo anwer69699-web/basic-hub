@@ -1,421 +1,37 @@
--- Desync للاجهزه الضعيفة + Auto Left/Right (نفس النظام)
+-- FR HUB LITE - 4 Buttons + Settings (Beautiful & Compact)
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
-local HttpService = game:GetService("HttpService")
 local StarterGui = game:GetService("StarterGui")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- ==================== [1] نفس كود الـ Desync الأصلي ====================
-
 local function Notify(title, text, duration)
-    duration = duration or 3
     pcall(function()
         StarterGui:SetCore("SendNotification", {
             Title = title,
             Text = text,
-            Duration = duration,
-            Icon = "rbxassetid://9079992154"
+            Duration = duration or 3
         })
     end)
 end
 
-if _G.FRHUB_DESYNC_LOADED then
-    Notify("FR HUB", "السكربت محمل بالفعل!", 3)
-    return
-end
-_G.FRHUB_DESYNC_LOADED = true
+if _G.FRHUB_BEAUTIFUL then return end
+_G.FRHUB_BEAUTIFUL = true
 
-local ScriptSettings = {
-    AutoDesync = false,
-    Minimized = false,
+-- Settings
+local Settings = {
     AutoLeft = false,
-    AutoRight = false
+    AutoRight = false,
+    Desync = false,
+    InstaSteal = false,
+    SpeedNormal = 40,
+    SpeedSteal = 15,
+    SettingsVisible = false
 }
-
-local function SaveSettings()
-    pcall(function()
-        local jsonString = HttpService:JSONEncode(ScriptSettings)
-        writefile("FRHUBz_Config.json", jsonString)
-    end)
-end
-
-local function LoadSettings()
-    pcall(function()
-        if isfile("FRHUBz_Config.json") then
-            local jsonString = readfile("FRHUBz_Config.json")
-            local loadedSettings = HttpService:JSONDecode(jsonString)
-            for k, v in pairs(loadedSettings) do
-                ScriptSettings[k] = v
-            end
-        end
-    end)
-end
-
-LoadSettings()
-
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "FRHUB_Desync_V9"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-
-local MainFrame = Instance.new("Frame")
-MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 260, 0, 380) -- زودت ارتفاع شوي للأزرار الجديدة
-MainFrame.Position = UDim2.new(0.5, -130, 0.4, -190)
-MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-MainFrame.BorderSizePixel = 0
-MainFrame.ClipsDescendants = true
-MainFrame.Parent = ScreenGui
-
-local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 10)
-UICorner.Parent = MainFrame
-
-local Header = Instance.new("Frame")
-Header.Name = "Header"
-Header.Size = UDim2.new(1, 0, 0, 35)
-Header.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-Header.BorderSizePixel = 0
-Header.Parent = MainFrame
-
-local HeaderCorner = Instance.new("UICorner")
-HeaderCorner.CornerRadius = UDim.new(0, 10)
-HeaderCorner.Parent = Header
-
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -50, 1, 0)
-Title.Position = UDim2.new(0, 10, 0, 0)
-Title.BackgroundTransparency = 1
-Title.Text = "FR HUB |  Desync V1"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.TextSize = 16
-Title.Font = Enum.Font.GothamBold
-Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = Header
-
--- نفس نظام الـ Dragging الأصلي
-local dragging, dragInput, dragStart, startPos
-local function update(input)
-    local delta = input.Position - dragStart
-    MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-end
-MainFrame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = MainFrame.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then dragging = false end
-        end)
-    end
-end)
-MainFrame.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
-end)
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then update(input) end
-end)
-
--- ==================== [2] نفس متغيرات الـ Desync الأصلية ====================
-
-local DesyncEnabled = false
-local Connection_RenderStepped = nil
-local TargetServerPosition = nil 
-local ActualServerPosition = nil 
-local FakePosHighlight = nil
-local FakePosLabel = nil
-local ServerPosPart = nil
-local CharacterAddedConnection = nil
-local StatusLabel = nil
-local RealPosLabel = nil
-
--- ==================== [3] نفس دوال الـ Desync الأصلية ====================
-
-function FastRespawn()
-    local char = game.Players.LocalPlayer.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hrp or not hum then return end
-    
-    hrp.Velocity = Vector3.new(0, 5000, 0)
-    hrp.RotVelocity = Vector3.new(99999,99999,99999)
-    
-    task.delay(0.05, function()
-        if hum then
-            hum:ChangeState(Enum.HumanoidStateType.Dead)
-        end
-    end)
-end
-
-local function SetDesync(state)
-    if state then
-        if typeof(rnet) == "table" then
-            if rnet.setdesync then pcall(function() rnet.setdesync(true) end) end
-            if rnet.desync then pcall(function() rnet.desync(true) end) end
-        end
-        if typeof(delta) == "table" then
-            if delta.raknet_desync then pcall(function() delta.raknet_desync(true) end) end
-            if delta.desync then pcall(function() delta.desync(true) end) end
-        end
-    else
-        if typeof(rnet) == "table" then
-            if rnet.setdesync then pcall(function() rnet.setdesync(false) end) end
-            if rnet.desync then pcall(function() rnet.desync(false) end) end
-        end
-        if typeof(delta) == "table" then
-            if delta.raknet_desync then pcall(function() delta.raknet_desync(false) end) end
-            if delta.desync then pcall(function() delta.desync(false) end) end
-        end
-    end
-end
-
-local function SendFakePosition(position)
-    local cf = CFrame.new(position)
-    if typeof(rnet) == "table" then
-        if rnet.sendphysics then pcall(function() rnet.sendphysics(cf) end) end
-        if rnet.sendposition then pcall(function() rnet.sendposition(position) end) end
-    end
-    if typeof(delta) == "table" then
-        if delta.sendphysics then pcall(function() delta.sendphysics(cf) end) end
-        if delta.sendposition then pcall(function() delta.sendposition(position) end) end
-    end
-end
-
-local function GetActualServerPosition()
-    if typeof(delta) == "table" and delta.get_server_position then
-        local success, pos = pcall(delta.get_server_position)
-        if success and pos and typeof(pos) == "Vector3" then
-            return pos
-        end
-    end
-    
-    if typeof(rnet) == "table" and rnet.get_server_position then
-        local success, pos = pcall(rnet.get_server_position)
-        if success and pos and typeof(pos) == "Vector3" then
-            return pos
-        end
-    end
-    
-    local char = LocalPlayer.Character
-    if char then
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            local success, pos = pcall(function()
-                return gethiddenproperty(hrp, "NetworkPosition") or 
-                       gethiddenproperty(hrp, "ServerPosition") or
-                       gethiddenproperty(hrp, "ReplicationPosition")
-            end)
-            if success and pos and typeof(pos) == "Vector3" then
-                return pos
-            end
-        end
-    end
-    
-    return nil 
-end
-
--- نفس CreateHighlight
-local function CreateHighlight()
-    if FakePosHighlight then FakePosHighlight:Destroy() end
-    if FakePosLabel then FakePosLabel:Destroy() end
-    if ServerPosPart then ServerPosPart:Destroy() end
-    
-    ServerPosPart = Instance.new("Part")
-    ServerPosPart.Name = "ServerPosPart"
-    ServerPosPart.Size = Vector3.new(4, 6, 4)
-    ServerPosPart.Transparency = 1
-    ServerPosPart.CanCollide = false
-    ServerPosPart.Anchored = true
-    ServerPosPart.Color = Color3.fromRGB(255, 0, 0)
-    ServerPosPart.Material = Enum.Material.Neon
-    ServerPosPart.Parent = workspace
-    
-    FakePosHighlight = Instance.new("BoxHandleAdornment")
-    FakePosHighlight.Name = "ServerPosIndicator"
-    FakePosHighlight.Size = Vector3.new(4, 6, 4)
-    FakePosHighlight.Color3 = Color3.fromRGB(255, 0, 0)
-    FakePosHighlight.Transparency = 0.3
-    FakePosHighlight.ZIndex = 10
-    FakePosHighlight.AlwaysOnTop = true
-    FakePosHighlight.Parent = workspace
-    FakePosHighlight.Visible = false
-    
-    FakePosLabel = Instance.new("BillboardGui")
-    FakePosLabel.Name = "ServerPosLabel"
-    FakePosLabel.Size = UDim2.new(0, 200, 0, 60)
-    FakePosLabel.AlwaysOnTop = true
-    FakePosLabel.Enabled = false
-    FakePosLabel.Parent = workspace
-    
-    local TextLabel = Instance.new("TextLabel")
-    TextLabel.Size = UDim2.new(1, 0, 1, 0)
-    TextLabel.BackgroundTransparency = 1
-    TextLabel.Text = "Test"
-    TextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    TextLabel.TextSize = 12
-    TextLabel.Font = Enum.Font.SourceSansBold
-    TextLabel.Parent = FakePosLabel
-end
-
-CreateHighlight()
-
--- نفس RubberBand System
-local RubberPart, RubberHighlight, RubberLabel, RubberConn
-
-function StartRB()
-    if RubberConn then RubberConn:Disconnect() end
-    if RubberPart then RubberPart:Destroy() end
-    if RubberHighlight then RubberHighlight:Destroy() end
-    if RubberLabel then RubberLabel:Destroy() end
-
-    RubberPart = Instance.new("Part")
-    RubberPart.Size = Vector3.new(4,6,4)
-    RubberPart.Anchored = true
-    RubberPart.CanCollide = false
-    RubberPart.Transparency = 1
-    RubberPart.Parent = workspace
-
-    RubberHighlight = Instance.new("BoxHandleAdornment")
-    RubberHighlight.Size = Vector3.new(4,6,4)
-    RubberHighlight.Color3 = Color3.fromRGB(0,255,0)
-    RubberHighlight.Transparency = 0.25
-    RubberHighlight.AlwaysOnTop = true
-    RubberHighlight.Adornee = RubberPart
-    RubberHighlight.Parent = workspace
-
-    RubberLabel = Instance.new("BillboardGui")
-    RubberLabel.Size = UDim2.new(0,200,0,50)
-    RubberLabel.AlwaysOnTop = true
-    RubberLabel.Adornee = RubberPart
-    RubberLabel.Parent = workspace
-
-    local txt = Instance.new("TextLabel")
-    txt.Size = UDim2.new(1,0,1,0)
-    txt.BackgroundTransparency = 1
-    txt.Text = "مكانك"
-    txt.TextColor3 = Color3.fromRGB(0,255,0)
-    txt.TextStrokeTransparency = 0
-    txt.TextSize = 14
-    txt.Font = Enum.Font.GothamBold
-    txt.Parent = RubberLabel
-
-    local lastPos = nil
-
-    RubberConn = game:GetService("RunService").Heartbeat:Connect(function(dt)
-        local char = game.Players.LocalPlayer.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-
-        local currentPos = hrp.Position
-        local velocity = hrp.Velocity
-
-        if lastPos then
-            local delta = (currentPos - lastPos)
-            local dist = delta.Magnitude
-            local maxPossible = velocity.Magnitude * dt + 2
-            local predicted = lastPos + (velocity * dt)
-            local error = (currentPos - predicted).Magnitude
-
-            if dist > 2 and error > 3 and dist > maxPossible then
-                RubberPart.CFrame = CFrame.new(currentPos)
-            end
-        end
-
-        lastPos = currentPos
-    end)
-end
-
-function StopRB()
-    if RubberConn then RubberConn:Disconnect() end
-    if RubberHighlight then RubberHighlight:Destroy() end
-    if RubberPart then RubberPart:Destroy() end
-    if RubberLabel then RubberLabel:Destroy() end
-end
-
--- ==================== [4] نفس UI الـ Desync الأصلي ====================
-
-local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Name = "ToggleBtn"
-ToggleBtn.Size = UDim2.new(0.9, 0, 0, 45)
-ToggleBtn.Position = UDim2.new(0.05, 0, 0.12, 0)
-ToggleBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-ToggleBtn.Text = "تفعيل Desync"
-ToggleBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
-ToggleBtn.TextSize = 18
-ToggleBtn.Font = Enum.Font.GothamBold
-ToggleBtn.AutoButtonColor = false
-ToggleBtn.Parent = MainFrame
-
-local BtnCorner = Instance.new("UICorner")
-BtnCorner.CornerRadius = UDim.new(0, 8)
-BtnCorner.Parent = ToggleBtn
-
-StatusLabel = Instance.new("TextLabel")
-StatusLabel.Name = "StatusLabel"
-StatusLabel.Size = UDim2.new(0.9, 0, 0, 20)
-StatusLabel.Position = UDim2.new(0.05, 0, 0.26, 0)
-StatusLabel.BackgroundTransparency = 1
-StatusLabel.Text = "الحالة: متوقف"
-StatusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
-StatusLabel.TextSize = 12
-StatusLabel.Font = Enum.Font.GothamBold
-StatusLabel.Parent = MainFrame
-
-RealPosLabel = Instance.new("TextLabel")
-RealPosLabel.Name = "RealPosLabel"
-RealPosLabel.Size = UDim2.new(0.9, 0, 0, 30)
-RealPosLabel.Position = UDim2.new(0.05, 0, 0.32, 0)
-RealPosLabel.BackgroundTransparency = 1
-RealPosLabel.Text = " خلي سرعتك في ديول السرعه العاديه = 40 سرعه الستيل = 15 "
-RealPosLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-RealPosLabel.TextSize = 10
-RealPosLabel.Font = Enum.Font.Gotham
-RealPosLabel.TextWrapped = true
-RealPosLabel.Parent = MainFrame
-
--- ==================== [5] أزرار Auto Left/Right الجديدة (نفس النمط) ====================
-
--- Auto Left Button (نفس نمط الـ Desync)
-local AutoLeftBtn = Instance.new("TextButton")
-AutoLeftBtn.Name = "AutoLeftBtn"
-AutoLeftBtn.Size = UDim2.new(0.44, 0, 0, 35)
-AutoLeftBtn.Position = UDim2.new(0.05, 0, 0.42, 0)
-AutoLeftBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-AutoLeftBtn.Text = "Auto Left"
-AutoLeftBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
-AutoLeftBtn.TextSize = 14
-AutoLeftBtn.Font = Enum.Font.GothamBold
-AutoLeftBtn.AutoButtonColor = false
-AutoLeftBtn.Parent = MainFrame
-
-local ALCorner = Instance.new("UICorner")
-ALCorner.CornerRadius = UDim.new(0, 6)
-ALCorner.Parent = AutoLeftBtn
-
--- Auto Right Button (نفس نمط الـ Desync)
-local AutoRightBtn = Instance.new("TextButton")
-AutoRightBtn.Name = "AutoRightBtn"
-AutoRightBtn.Size = UDim2.new(0.44, 0, 0, 35)
-AutoRightBtn.Position = UDim2.new(0.51, 0, 0.42, 0)
-AutoRightBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-AutoRightBtn.Text = "Auto Right"
-AutoRightBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
-AutoRightBtn.TextSize = 14
-AutoRightBtn.Font = Enum.Font.GothamBold
-AutoRightBtn.AutoButtonColor = false
-AutoRightBtn.Parent = MainFrame
-
-local ARCorner = Instance.new("UICorner")
-ARCorner.CornerRadius = UDim.new(0, 6)
-ARCorner.Parent = AutoRightBtn
-
--- ==================== [6] نظام Auto Left/Right (نفس نظام الـ Desync) ====================
 
 -- Points
 local LEFT_POINTS = {
@@ -433,34 +49,63 @@ local RIGHT_POINTS = {
 }
 
 -- Variables
+local CurrentVel = nil
 local AutoPhase = "START"
 local CurrentPath = nil
 local WaitingForSteal = false
 local AutoConnection = nil
+local DesyncConnection = nil
+local TargetServerPos = nil
+local isInstaStealActive = false
 
--- Helper Functions
-local function GetCharacter()
-    return LocalPlayer.Character
-end
-
-local function GetHumanoid()
-    local char = GetCharacter()
-    if char then return char:FindFirstChildOfClass("Humanoid") end
-    return nil
-end
-
+-- Get Parts
 local function GetHRP()
-    local char = GetCharacter()
+    local char = LocalPlayer.Character
     if char then return char:FindFirstChild("HumanoidRootPart") end
     return nil
 end
 
-local function CheckHasBall()
-    local char = GetCharacter()
+local function GetHumanoid()
+    local char = LocalPlayer.Character
+    if char then return char:FindFirstChildOfClass("Humanoid") end
+    return nil
+end
+
+local function HasBall()
+    local char = LocalPlayer.Character
     if not char then return false end
     return char:FindFirstChild("Basketball") ~= nil
 end
 
+-- Create Velocity
+local function CreateVelocity()
+    local hrp = GetHRP()
+    if not hrp then return nil end
+    
+    if CurrentVel then CurrentVel:Destroy() end
+    
+    for _, v in pairs(hrp:GetChildren()) do
+        if v:IsA("BodyVelocity") then v:Destroy() end
+    end
+    
+    local vel = Instance.new("BodyVelocity")
+    vel.MaxForce = Vector3.new(400000, 400000, 400000)
+    vel.Velocity = Vector3.zero
+    vel.P = 10000
+    vel.Parent = hrp
+    
+    CurrentVel = vel
+    return vel
+end
+
+local function RemoveVelocity()
+    if CurrentVel then
+        CurrentVel:Destroy()
+        CurrentVel = nil
+    end
+end
+
+-- Try Steal
 local function TrySteal()
     local ball = Workspace:FindFirstChild("Basketball")
     if not ball then return false end
@@ -477,15 +122,541 @@ local function TrySteal()
         task.wait(0.02)
     end
     
-    return CheckHasBall()
+    return HasBall()
 end
 
--- نظام Auto (نفس كفاءة الـ Desync - Heartbeat)
+-- Insta Steal System
+local function StartInstaStealSystem()
+    task.spawn(function()
+        while task.wait(0.1) do
+            if not isInstaStealActive then continue end
+            
+            local plots = Workspace:FindFirstChild("Plots")
+            if plots then
+                for _, plot in pairs(plots:GetChildren()) do
+                    local podiums = plot:FindFirstChild("AnimalPodiums")
+                    if podiums then
+                        for _, podium in pairs(podiums:GetChildren()) do
+                            local base = podium:FindFirstChild("Base")
+                            local spawn = base and base:FindFirstChild("Spawn")
+                            local att = spawn and spawn:FindFirstChild("PromptAttachment")
+                            
+                            if att then
+                                for _, prompt in pairs(att:GetChildren()) do
+                                    if prompt:IsA("ProximityPrompt") then
+                                        prompt.HoldDuration = 0.03
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            
+            local ball = Workspace:FindFirstChild("Basketball")
+            if ball then
+                local owner = ball:FindFirstChild("Owner")
+                if owner and owner.Value ~= LocalPlayer then
+                    pcall(function()
+                        if ReplicatedStorage:FindFirstChild("Events") and ReplicatedStorage.Events:FindFirstChild("BallEvent") then
+                            ReplicatedStorage.Events.BallEvent:FireServer("Grab", ball)
+                        end
+                    end)
+                end
+            end
+        end
+    end)
+end
+
+-- Desync
+local function SendFakePosition(pos)
+    local cf = CFrame.new(pos)
+    if typeof(rnet) == "table" then
+        pcall(function()
+            if rnet.sendposition then rnet.sendposition(pos) end
+            if rnet.sendphysics then rnet.sendphysics(cf) end
+        end)
+    end
+    if typeof(delta) == "table" then
+        pcall(function()
+            if delta.sendposition then delta.sendposition(pos) end
+            if delta.sendphysics then delta.sendphysics(cf) end
+        end)
+    end
+end
+
+-- ==================== BEAUTIFUL UI ====================
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "FRHUB_BEAUTIFUL"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+-- Main Frame (Small & Beautiful)
+local Main = Instance.new("Frame")
+Main.Size = UDim2.new(0, 240, 0, 280)
+Main.Position = UDim2.new(0.5, -120, 0.5, -140)
+Main.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+Main.BorderSizePixel = 0
+Main.Active = true
+Main.ClipsDescendants = true
+Main.Parent = ScreenGui
+
+-- Gradient Background
+local UIGradient = Instance.new("UIGradient")
+UIGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 25, 40)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(15, 15, 25))
+})
+UIGradient.Rotation = 45
+UIGradient.Parent = Main
+
+-- Corner
+local Corner = Instance.new("UICorner")
+Corner.CornerRadius = UDim.new(0, 16)
+Corner.Parent = Main
+
+-- Glow Effect
+local Glow = Instance.new("ImageLabel")
+Glow.Name = "Glow"
+Glow.Size = UDim2.new(1, 40, 1, 40)
+Glow.Position = UDim2.new(0, -20, 0, -20)
+Glow.BackgroundTransparency = 1
+Glow.Image = "rbxassetid://5554236805"
+Glow.ImageColor3 = Color3.fromRGB(100, 100, 255)
+Glow.ImageTransparency = 0.85
+Glow.ScaleType = Enum.ScaleType.Slice
+Glow.SliceCenter = Rect.new(23, 23, 277, 277)
+Glow.ZIndex = 0
+Glow.Parent = Main
+
+-- Animated Border
+local Border = Instance.new("UIStroke")
+Border.Thickness = 2
+Border.Color = Color3.fromRGB(100, 100, 255)
+Border.Transparency = 0.3
+Border.Parent = Main
+
+task.spawn(function()
+    local t = 0
+    while Main.Parent do
+        t += 0.05
+        Border.Color = Color3.fromHSV((tick() * 0.1) % 1, 0.6, 1)
+        Border.Transparency = 0.3 + math.sin(t) * 0.2
+        task.wait(0.1)
+    end
+end)
+
+-- Title Bar
+local TitleBar = Instance.new("Frame")
+TitleBar.Size = UDim2.new(1, 0, 0, 40)
+TitleBar.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+TitleBar.BackgroundTransparency = 0.5
+TitleBar.BorderSizePixel = 0
+TitleBar.Parent = Main
+
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim.new(0, 16)
+TitleCorner.Parent = TitleBar
+
+-- Title
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -100, 1, 0)
+Title.Position = UDim2.new(0, 15, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "⚡ FR HUB LITE"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 16
+Title.Font = Enum.Font.GothamBlack
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = TitleBar
+
+-- Settings Button (⚙️)
+local SettingsBtn = Instance.new("TextButton")
+SettingsBtn.Size = UDim2.new(0, 32, 0, 32)
+SettingsBtn.Position = UDim2.new(1, -68, 0.5, -16)
+SettingsBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+SettingsBtn.Text = "⚙️"
+SettingsBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+SettingsBtn.TextSize = 18
+SettingsBtn.Font = Enum.Font.SourceSansBold
+SettingsBtn.Parent = TitleBar
+
+local SettingsBtnCorner = Instance.new("UICorner")
+SettingsBtnCorner.CornerRadius = UDim.new(0, 8)
+SettingsBtnCorner.Parent = SettingsBtn
+
+-- Minimize
+local MinBtn = Instance.new("TextButton")
+MinBtn.Size = UDim2.new(0, 32, 0, 32)
+MinBtn.Position = UDim2.new(1, -36, 0.5, -16)
+MinBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+MinBtn.Text = "−"
+MinBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinBtn.TextSize = 20
+MinBtn.Font = Enum.Font.GothamBold
+MinBtn.Parent = TitleBar
+
+local MinBtnCorner = Instance.new("UICorner")
+MinBtnCorner.CornerRadius = UDim.new(0, 8)
+MinBtnCorner.Parent = MinBtn
+
+-- Content Frame
+local Content = Instance.new("Frame")
+Content.Size = UDim2.new(1, -20, 1, -50)
+Content.Position = UDim2.new(0, 10, 0, 45)
+Content.BackgroundTransparency = 1
+Content.Parent = Main
+
+-- Status Label (Beautiful)
+local Status = Instance.new("TextLabel")
+Status.Size = UDim2.new(1, 0, 0, 28)
+Status.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+Status.BackgroundTransparency = 0.3
+Status.Text = "✨ Ready | Normal: 40 | Steal: 15"
+Status.TextColor3 = Color3.fromRGB(100, 255, 150)
+Status.TextSize = 11
+Status.Font = Enum.Font.GothamBold
+Status.Parent = Content
+
+local StatusCorner = Instance.new("UICorner")
+StatusCorner.CornerRadius = UDim.new(0, 8)
+StatusCorner.Parent = Status
+
+-- Settings Panel (Hidden by default)
+local SettingsPanel = Instance.new("Frame")
+SettingsPanel.Size = UDim2.new(1, 0, 0, 90)
+SettingsPanel.Position = UDim2.new(0, 0, 0, 35)
+SettingsPanel.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+SettingsPanel.BackgroundTransparency = 0.1
+SettingsPanel.BorderSizePixel = 0
+SettingsPanel.Visible = false
+SettingsPanel.Parent = Content
+
+local SettingsPanelCorner = Instance.new("UICorner")
+SettingsPanelCorner.CornerRadius = UDim.new(0, 12)
+SettingsPanelCorner.Parent = SettingsPanel
+
+-- Settings Title
+local SettingsTitle = Instance.new("TextLabel")
+SettingsTitle.Size = UDim2.new(1, 0, 0, 25)
+SettingsTitle.BackgroundTransparency = 1
+SettingsTitle.Text = "⚡ Speed Settings"
+SettingsTitle.TextColor3 = Color3.fromRGB(255, 200, 100)
+SettingsTitle.TextSize = 12
+SettingsTitle.Font = Enum.Font.GothamBold
+SettingsTitle.Parent = SettingsPanel
+
+-- Normal Speed Label
+local NormalLabel = Instance.new("TextLabel")
+NormalLabel.Size = UDim2.new(0.4, 0, 0, 25)
+NormalLabel.Position = UDim2.new(0, 10, 0, 30)
+NormalLabel.BackgroundTransparency = 1
+NormalLabel.Text = "Normal:"
+NormalLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+NormalLabel.TextSize = 11
+NormalLabel.Font = Enum.Font.Gotham
+NormalLabel.TextXAlignment = Enum.TextXAlignment.Left
+NormalLabel.Parent = SettingsPanel
+
+-- Normal Speed TextBox
+local NormalBox = Instance.new("TextBox")
+NormalBox.Size = UDim2.new(0.5, -15, 0, 25)
+NormalBox.Position = UDim2.new(0.5, 5, 0, 30)
+NormalBox.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+NormalBox.Text = tostring(Settings.SpeedNormal)
+NormalBox.TextColor3 = Color3.fromRGB(100, 255, 150)
+NormalBox.TextSize = 12
+NormalBox.Font = Enum.Font.GothamBold
+NormalBox.ClearTextOnFocus = false
+NormalBox.Parent = SettingsPanel
+
+local NormalBoxCorner = Instance.new("UICorner")
+NormalBoxCorner.CornerRadius = UDim.new(0, 6)
+NormalBoxCorner.Parent = NormalBox
+
+-- Steal Speed Label
+local StealLabel = Instance.new("TextLabel")
+StealLabel.Size = UDim2.new(0.4, 0, 0, 25)
+StealLabel.Position = UDim2.new(0, 10, 0, 60)
+StealLabel.BackgroundTransparency = 1
+StealLabel.Text = "Steal:"
+StealLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+StealLabel.TextSize = 11
+StealLabel.Font = Enum.Font.Gotham
+StealLabel.TextXAlignment = Enum.TextXAlignment.Left
+StealLabel.Parent = SettingsPanel
+
+-- Steal Speed TextBox
+local StealBox = Instance.new("TextBox")
+StealBox.Size = UDim2.new(0.5, -15, 0, 25)
+StealBox.Position = UDim2.new(0.5, 5, 0, 60)
+StealBox.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+StealBox.Text = tostring(Settings.SpeedSteal)
+StealBox.TextColor3 = Color3.fromRGB(255, 150, 100)
+StealBox.TextSize = 12
+StealBox.Font = Enum.Font.GothamBold
+StealBox.ClearTextOnFocus = false
+StealBox.Parent = SettingsPanel
+
+local StealBoxCorner = Instance.new("UICorner")
+StealBoxCorner.CornerRadius = UDim.new(0, 6)
+StealBoxCorner.Parent = StealBox
+
+-- Update Status Function
+local function UpdateStatus()
+    Status.Text = string.format("✨ %s | N:%d | S:%d", 
+        Settings.AutoLeft and "Left" or Settings.AutoRight and "Right" or "Ready",
+        Settings.SpeedNormal,
+        Settings.SpeedSteal
+    )
+end
+
+-- TextBox Events - Instant Update
+NormalBox.FocusLost:Connect(function()
+    local num = tonumber(NormalBox.Text)
+    if num and num > 0 and num <= 100 then
+        Settings.SpeedNormal = num
+        UpdateStatus()
+        
+        -- Animation
+        TweenService:Create(NormalBox, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(60, 80, 60)
+        }):Play()
+        task.wait(0.2)
+        TweenService:Create(NormalBox, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+        }):Play()
+    else
+        NormalBox.Text = tostring(Settings.SpeedNormal)
+    end
+end)
+
+StealBox.FocusLost:Connect(function()
+    local num = tonumber(StealBox.Text)
+    if num and num > 0 and num <= 100 then
+        Settings.SpeedSteal = num
+        UpdateStatus()
+        
+        -- Animation
+        TweenService:Create(StealBox, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(80, 60, 40)
+        }):Play()
+        task.wait(0.2)
+        TweenService:Create(StealBox, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+        }):Play()
+    else
+        StealBox.Text = tostring(Settings.SpeedSteal)
+    end
+end)
+
+-- Buttons Container
+local ButtonsContainer = Instance.new("Frame")
+ButtonsContainer.Size = UDim2.new(1, 0, 1, -40)
+ButtonsContainer.Position = UDim2.new(0, 0, 0, 40)
+ButtonsContainer.BackgroundTransparency = 1
+ButtonsContainer.Parent = Content
+
+-- Beautiful Button Creator
+local function CreateBeautifulButton(name, y, color, icon)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 0, 42)
+    btn.Position = UDim2.new(0, 0, 0, y)
+    btn.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+    btn.BorderSizePixel = 0
+    btn.Text = ""
+    btn.AutoButtonColor = false
+    btn.Parent = ButtonsContainer
+    
+    -- Gradient
+    local btnGradient = Instance.new("UIGradient")
+    btnGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(40, 40, 60)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 30, 45))
+    })
+    btnGradient.Rotation = 90
+    btnGradient.Parent = btn
+    
+    -- Corner
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.CornerRadius = UDim.new(0, 10)
+    btnCorner.Parent = btn
+    
+    -- Stroke
+    local btnStroke = Instance.new("UIStroke")
+    btnStroke.Thickness = 1.5
+    btnStroke.Color = Color3.fromRGB(60, 60, 80)
+    btnStroke.Transparency = 0.5
+    btnStroke.Parent = btn
+    
+    -- Icon
+    local iconLabel = Instance.new("TextLabel")
+    iconLabel.Size = UDim2.new(0, 30, 0, 30)
+    iconLabel.Position = UDim2.new(0, 10, 0.5, -15)
+    iconLabel.BackgroundTransparency = 1
+    iconLabel.Text = icon
+    iconLabel.TextColor3 = color
+    iconLabel.TextSize = 20
+    iconLabel.Font = Enum.Font.SourceSansBold
+    iconLabel.Parent = btn
+    
+    -- Text
+    local textLabel = Instance.new("TextLabel")
+    textLabel.Size = UDim2.new(1, -90, 1, 0)
+    textLabel.Position = UDim2.new(0, 45, 0, 0)
+    textLabel.BackgroundTransparency = 1
+    textLabel.Text = name .. ": OFF"
+    textLabel.TextColor3 = Color3.fromRGB(180, 180, 200)
+    textLabel.TextSize = 13
+    textLabel.Font = Enum.Font.GothamBold
+    textLabel.TextXAlignment = Enum.TextXAlignment.Left
+    textLabel.Parent = btn
+    
+    -- Status Circle
+    local statusCircle = Instance.new("Frame")
+    statusCircle.Size = UDim2.new(0, 12, 0, 12)
+    statusCircle.Position = UDim2.new(1, -22, 0.5, -6)
+    statusCircle.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    statusCircle.BorderSizePixel = 0
+    statusCircle.Parent = btn
+    
+    local statusCorner = Instance.new("UICorner")
+    statusCorner.CornerRadius = UDim.new(1, 0)
+    statusCorner.Parent = statusCircle
+    
+    -- Hover Effects
+    btn.MouseEnter:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(45, 45, 65)
+        }):Play()
+        TweenService:Create(btnStroke, TweenInfo.new(0.2), {
+            Transparency = 0.3,
+            Color = color
+        }):Play()
+    end)
+    
+    btn.MouseLeave:Connect(function()
+        if not btn:GetAttribute("Active") then
+            TweenService:Create(btn, TweenInfo.new(0.2), {
+                BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+            }):Play()
+            TweenService:Create(btnStroke, TweenInfo.new(0.2), {
+                Transparency = 0.5,
+                Color = Color3.fromRGB(60, 60, 80)
+            }):Play()
+        end
+    end)
+    
+    -- Toggle Function
+    local function SetActive(active)
+        btn:SetAttribute("Active", active)
+        
+        if active then
+            -- ON State
+            TweenService:Create(btn, TweenInfo.new(0.3), {
+                BackgroundColor3 = Color3.fromRGB(50, 50, 80)
+            }):Play()
+            TweenService:Create(btnGradient, TweenInfo.new(0.3), {
+                Color = ColorSequence.new({
+                    ColorSequenceKeypoint.new(0, Color3.fromRGB(60, 60, 100)),
+                    ColorSequenceKeypoint.new(1, Color3.fromRGB(40, 40, 70))
+                })
+            }):Play()
+            TweenService:Create(btnStroke, TweenInfo.new(0.3), {
+                Color = color,
+                Transparency = 0
+            }):Play()
+            TweenService:Create(textLabel, TweenInfo.new(0.2), {
+                TextColor3 = Color3.fromRGB(255, 255, 255)
+            }):Play()
+            TweenService:Create(statusCircle, TweenInfo.new(0.3), {
+                BackgroundColor3 = color
+            }):Play()
+            textLabel.Text = name .. ": ON"
+            
+            -- Pulse Animation
+            task.spawn(function()
+                while btn:GetAttribute("Active") and btn.Parent do
+                    TweenService:Create(statusCircle, TweenInfo.new(0.5), {
+                        Size = UDim2.new(0, 14, 0, 14),
+                        Position = UDim2.new(1, -23, 0.5, -7)
+                    }):Play()
+                    task.wait(0.5)
+                    TweenService:Create(statusCircle, TweenInfo.new(0.5), {
+                        Size = UDim2.new(0, 12, 0, 12),
+                        Position = UDim2.new(1, -22, 0.5, -6)
+                    }):Play()
+                    task.wait(0.5)
+                end
+            end)
+        else
+            -- OFF State
+            TweenService:Create(btn, TweenInfo.new(0.3), {
+                BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+            }):Play()
+            TweenService:Create(btnGradient, TweenInfo.new(0.3), {
+                Color = ColorSequence.new({
+                    ColorSequenceKeypoint.new(0, Color3.fromRGB(40, 40, 60)),
+                    ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 30, 45))
+                })
+            }):Play()
+            TweenService:Create(btnStroke, TweenInfo.new(0.3), {
+                Color = Color3.fromRGB(60, 60, 80),
+                Transparency = 0.5
+            }):Play()
+            TweenService:Create(textLabel, TweenInfo.new(0.2), {
+                TextColor3 = Color3.fromRGB(180, 180, 200)
+            }):Play()
+            TweenService:Create(statusCircle, TweenInfo.new(0.3), {
+                BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+            }):Play()
+            textLabel.Text = name .. ": OFF"
+        end
+    end
+    
+    -- Click Effect
+    btn.MouseButton1Click:Connect(function()
+        -- Ripple
+        local ripple = Instance.new("Frame")
+        ripple.Size = UDim2.new(0, 0, 0, 0)
+        ripple.Position = UDim2.new(0.5, 0, 0.5, 0)
+        ripple.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        ripple.BackgroundTransparency = 0.7
+        ripple.BorderSizePixel = 0
+        ripple.ZIndex = 10
+        ripple.Parent = btn
+        
+        local rippleCorner = Instance.new("UICorner")
+        rippleCorner.CornerRadius = UDim.new(1, 0)
+        rippleCorner.Parent = ripple
+        
+        TweenService:Create(ripple, TweenInfo.new(0.6), {
+            Size = UDim2.new(2, 0, 2, 0),
+            Position = UDim2.new(-0.5, 0, -0.5, 0),
+            BackgroundTransparency = 1
+        }):Play()
+        
+        task.delay(0.6, function()
+            ripple:Destroy()
+        end)
+    end)
+    
+    return btn, SetActive, textLabel
+end
+
+-- Create 4 Beautiful Buttons
+local btnLeft, setLeftActive = CreateBeautifulButton("Auto Left", 0, Color3.fromRGB(0, 255, 150), "◄")
+local btnRight, setRightActive = CreateBeautifulButton("Auto Right", 50, Color3.fromRGB(0, 200, 255), "►")
+local btnDesync, setDesyncActive = CreateBeautifulButton("Desync", 100, Color3.fromRGB(255, 50, 100), "👻")
+local btnSteal, setStealActive = CreateBeautifulButton("Insta Steal", 150, Color3.fromRGB(255, 200, 50), "⚡")
+
+-- Auto System
 local function StartAutoSystem()
     if AutoConnection then AutoConnection:Disconnect() end
     
     AutoConnection = RunService.Heartbeat:Connect(function()
-        if not ScriptSettings.AutoLeft and not ScriptSettings.AutoRight then return end
+        if not Settings.AutoLeft and not Settings.AutoRight then return end
         
         local hrp = GetHRP()
         local hum = GetHumanoid()
@@ -493,19 +664,16 @@ local function StartAutoSystem()
         
         local points = CurrentPath == "LEFT" and LEFT_POINTS or RIGHT_POINTS
         
-        -- انتظار في الموقع 2
         if WaitingForSteal then
             hum:Move(Vector3.zero, false)
-            
             local stolen = TrySteal()
-            if stolen or CheckHasBall() then
+            if stolen or HasBall() then
                 WaitingForSteal = false
                 AutoPhase = "POINT_3"
             end
             return
         end
         
-        -- التحرك للنقاط
         local currentPoint = points[AutoPhase]
         if not currentPoint then
             AutoPhase = "START"
@@ -515,7 +683,6 @@ local function StartAutoSystem()
         local targetPos = Vector3.new(currentPoint.X, hrp.Position.Y, currentPoint.Z)
         local distance = (targetPos - hrp.Position).Magnitude
         
-        -- وصل للهدف
         if distance < 2 then
             if AutoPhase == "START" then
                 AutoPhase = "POINT_2"
@@ -531,16 +698,12 @@ local function StartAutoSystem()
             end
         end
         
-        -- التحرك (نفس نظام الـ Desync - سلس وسريع)
         local direction = (targetPos - hrp.Position).Unit
         direction = Vector3.new(direction.X, 0, direction.Z).Unit
         
-        local speed = CheckHasBall() and 25 or 40
+        local speed = HasBall() and Settings.SpeedSteal or Settings.SpeedNormal
         
-        -- Humanoid:Move (نفس الـ Desync)
         hum:Move(direction, false)
-        
-        -- Velocity للسرعة
         hrp.AssemblyLinearVelocity = Vector3.new(
             direction.X * speed,
             hrp.AssemblyLinearVelocity.Y,
@@ -554,308 +717,150 @@ local function StopAutoSystem()
         AutoConnection:Disconnect()
         AutoConnection = nil
     end
-    
     local hum = GetHumanoid()
-    if hum then
-        hum:Move(Vector3.zero, false)
-    end
-    
+    if hum then hum:Move(Vector3.zero, false) end
     CurrentPath = nil
     AutoPhase = "START"
     WaitingForSteal = false
 end
 
--- Toggle Functions for Auto
-local function ToggleAutoLeft()
-    ScriptSettings.AutoLeft = not ScriptSettings.AutoLeft
+-- Button Click Events
+btnLeft.MouseButton1Click:Connect(function()
+    Settings.AutoLeft = not Settings.AutoLeft
+    setLeftActive(Settings.AutoLeft)
     
-    if ScriptSettings.AutoLeft then
-        -- إيقاف Right
-        ScriptSettings.AutoRight = false
-        TweenService:Create(AutoRightBtn, TweenInfo.new(0.3), {
-            BackgroundColor3 = Color3.fromRGB(45, 45, 45),
-            TextColor3 = Color3.fromRGB(200, 200, 200)
-        }):Play()
-        AutoRightBtn.Text = "Auto Right"
-        
-        -- تفعيل Left
-        TweenService:Create(AutoLeftBtn, TweenInfo.new(0.3), {
-            BackgroundColor3 = Color3.fromRGB(0, 170, 127),
-            TextColor3 = Color3.fromRGB(255, 255, 255)
-        }):Play()
-        AutoLeftBtn.Text = "Auto Left: ON"
-        
+    if Settings.AutoLeft then
+        Settings.AutoRight = false
+        setRightActive(false)
         AutoPhase = "START"
         CurrentPath = "LEFT"
         WaitingForSteal = false
+        CreateVelocity()
         StartAutoSystem()
-        
     else
-        TweenService:Create(AutoLeftBtn, TweenInfo.new(0.3), {
-            BackgroundColor3 = Color3.fromRGB(45, 45, 45),
-            TextColor3 = Color3.fromRGB(200, 200, 200)
-        }):Play()
-        AutoLeftBtn.Text = "Auto Left"
-        
-        if not ScriptSettings.AutoRight then
-            StopAutoSystem()
-        end
+        RemoveVelocity()
+        if not Settings.AutoRight then StopAutoSystem() end
     end
-end
+    UpdateStatus()
+end)
 
-local function ToggleAutoRight()
-    ScriptSettings.AutoRight = not ScriptSettings.AutoRight
+btnRight.MouseButton1Click:Connect(function()
+    Settings.AutoRight = not Settings.AutoRight
+    setRightActive(Settings.AutoRight)
     
-    if ScriptSettings.AutoRight then
-        -- إيقاف Left
-        ScriptSettings.AutoLeft = false
-        TweenService:Create(AutoLeftBtn, TweenInfo.new(0.3), {
-            BackgroundColor3 = Color3.fromRGB(45, 45, 45),
-            TextColor3 = Color3.fromRGB(200, 200, 200)
-        }):Play()
-        AutoLeftBtn.Text = "Auto Left"
-        
-        -- تفعيل Right
-        TweenService:Create(AutoRightBtn, TweenInfo.new(0.3), {
-            BackgroundColor3 = Color3.fromRGB(0, 170, 127),
-            TextColor3 = Color3.fromRGB(255, 255, 255)
-        }):Play()
-        AutoRightBtn.Text = "Auto Right: ON"
-        
+    if Settings.AutoRight then
+        Settings.AutoLeft = false
+        setLeftActive(false)
         AutoPhase = "START"
         CurrentPath = "RIGHT"
         WaitingForSteal = false
+        CreateVelocity()
         StartAutoSystem()
-        
     else
-        TweenService:Create(AutoRightBtn, TweenInfo.new(0.3), {
-            BackgroundColor3 = Color3.fromRGB(45, 45, 45),
-            TextColor3 = Color3.fromRGB(200, 200, 200)
-        }):Play()
-        AutoRightBtn.Text = "Auto Right"
-        
-        if not ScriptSettings.AutoLeft then
-            StopAutoSystem()
-        end
+        RemoveVelocity()
+        if not Settings.AutoLeft then StopAutoSystem() end
     end
-end
+    UpdateStatus()
+end)
 
--- Events
-AutoLeftBtn.MouseButton1Click:Connect(ToggleAutoLeft)
-AutoRightBtn.MouseButton1Click:Connect(ToggleAutoRight)
-
--- ==================== [7] نفس ToggleDesync الأصلي (بدون تغيير) ====================
-
-local function OnCharacterAdded(newChar)
-    if not DesyncEnabled then return end
+btnDesync.MouseButton1Click:Connect(function()
+    Settings.Desync = not Settings.Desync
+    setDesyncActive(Settings.Desync)
     
-    local hrp = newChar:WaitForChild("HumanoidRootPart", 2)
-    if not hrp then return end
-    
-    SetDesync(true)
-    
-    task.spawn(function()
-        while DesyncEnabled and newChar.Parent do
-            if TargetServerPosition then
-                SendFakePosition(TargetServerPosition)
+    if Settings.Desync then
+        local hrp = GetHRP()
+        if hrp then TargetServerPos = hrp.Position end
+        
+        DesyncConnection = RunService.RenderStepped:Connect(function()
+            if TargetServerPos then
+                SendFakePosition(TargetServerPos)
             end
-            task.wait(0.02)
-        end
-    end)
-end
-
-local function ToggleDesync()
-    DesyncEnabled = not DesyncEnabled
-    if DesyncEnabled then
-        StartRB()
-        TweenService:Create(ToggleBtn, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(0, 170, 127), TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
-        ToggleBtn.Text = "Desync: مفعل"
-        StatusLabel.Text = "جاري المحاولة..."
-        StatusLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
-        
-        local char = LocalPlayer.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            TargetServerPosition = hrp.Position
-        end
-        
-        SetDesync(true)
-        FastRespawn()
-        Notify("FR HUB", "تم تفعيل الDesync!", 2)
-        
-        if not FakePosHighlight or not FakePosHighlight.Parent then
-            CreateHighlight()
-        end
-        
-        if TargetServerPosition and ServerPosPart then
-            ServerPosPart.CFrame = CFrame.new(TargetServerPosition)
-            ServerPosPart.Transparency = 1
-            FakePosHighlight.CFrame = CFrame.new(TargetServerPosition)
-            FakePosHighlight.Visible = false
-            FakePosLabel.Adornee = ServerPosPart
-            FakePosLabel.Enabled = false
-        end
-        
-        Connection_RenderStepped = RunService.RenderStepped:Connect(function()
-            local char = LocalPlayer.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            
-            if hrp and TargetServerPosition then
-                SendFakePosition(TargetServerPosition)
-                ActualServerPosition = GetActualServerPosition()
-                
-                local realPos = hrp.Position
-                local distance = (realPos - TargetServerPosition).Magnitude
-                
-                if ActualServerPosition then
-                    local actualDistance = (ActualServerPosition - TargetServerPosition).Magnitude
-                    RealPosLabel.Text = "السيرفر " .. math.floor(ActualServerPosition.X) .. ", " .. math.floor(ActualServerPosition.Z) ..
-                                       "\nالفرق: " .. math.floor(actualDistance) .. "m"
-                    
-                    if actualDistance < 5 then
-                        StatusLabel.Text = "ناجح! (" .. math.floor(actualDistance) .. "m)"
-                        StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 100)
-                        FakePosHighlight.Color3 = Color3.fromRGB(0, 255, 0)
-                        FakePosLabel.TextLabel.Text = "so dont care abt ts js test"
-                    else
-                        StatusLabel.Text = "فشل! (" .. math.floor(actualDistance) .. "m)"
-                        StatusLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
-                        FakePosHighlight.Color3 = Color3.fromRGB(255, 0, 0)
-                        FakePosLabel.TextLabel.Text = "TEST"
-                    end
-                else
-                    RealPosLabel.Text = " خلي سرعتك في ديول السرعه العاديه = 40 سرعه الستيل = 15 "
-                    
-                    if distance > 10 then
-                        StatusLabel.Text = "شغال (" .. math.floor(distance) .. "m)"
-                        StatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
-                    else
-                        StatusLabel.Text = "شغال😆 (" .. math.floor(distance) .. "m)"
-                        StatusLabel.TextColor3 = Color3.fromRGB(255, 200, 0)
-                    end
-                end
+            local hrp = GetHRP()
+            if hrp then
+                hrp.CFrame = hrp.CFrame + Vector3.new(
+                    math.random(-20, 20),
+                    math.random(-5, 5),
+                    math.random(-20, 20)
+                )
             end
         end)
-        
-        CharacterAddedConnection = LocalPlayer.CharacterAdded:Connect(OnCharacterAdded)
     else
-        StopRB()
-        TweenService:Create(ToggleBtn, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(45, 45, 45), TextColor3 = Color3.fromRGB(200, 200, 200)}):Play()
-        ToggleBtn.Text = "تفعيل Desync"
-        StatusLabel.Text = "الحالة: متوقف"
-        StatusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
-        RealPosLabel.Text = "سويلي لايك و فولو"
-        SetDesync(false)
-        if Connection_RenderStepped then Connection_RenderStepped:Disconnect() end
-        if CharacterAddedConnection then CharacterAddedConnection:Disconnect() end
-        if FakePosHighlight then 
-            FakePosHighlight.Visible = false 
-            FakePosHighlight.Color3 = Color3.fromRGB(255, 0, 0)
+        if DesyncConnection then
+            DesyncConnection:Disconnect()
+            DesyncConnection = nil
         end
-        if FakePosLabel then 
-            FakePosLabel.Enabled = false 
-            FakePosLabel.TextLabel.Text = "test"
-        end
-        if ServerPosPart then ServerPosPart.Transparency = 1 end
-        TargetServerPosition = nil
-        ActualServerPosition = nil
-        Notify("FR HUB", "تم إيقاف الDesync!", 2)
+        TargetServerPos = nil
     end
-end
-
-ToggleBtn.MouseButton1Click:Connect(ToggleDesync)
-
--- ==================== [8] نفس باقي UI الأصلي ====================
-
-local SaveSettingsBtn = Instance.new("TextButton")
-SaveSettingsBtn.Size = UDim2.new(0.9, 0, 0, 30)
-SaveSettingsBtn.Position = UDim2.new(0.05, 0, 0.55, 0)
-SaveSettingsBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-SaveSettingsBtn.Text = "تشغيل Desyncتلقاءي"
-SaveSettingsBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
-SaveSettingsBtn.TextSize = 14
-SaveSettingsBtn.Font = Enum.Font.GothamBold
-SaveSettingsBtn.Parent = MainFrame
-
-local SaveBtnCorner = Instance.new("UICorner")
-SaveBtnCorner.CornerRadius = UDim.new(0, 8)
-SaveBtnCorner.Parent = SaveSettingsBtn
-
-SaveSettingsBtn.MouseButton1Click:Connect(function()
-    ScriptSettings.AutoDesync = DesyncEnabled
-    SaveSettings()
-    Notify("FR HUB", "تم بنجاج", 2)
+    UpdateStatus()
 end)
 
-local Credits = Instance.new("TextLabel")
-Credits.Size = UDim2.new(1, 0, 0, 25)
-Credits.Position = UDim2.new(0, 0, 1, -25)
-Credits.BackgroundTransparency = 1
-Credits.Text = "© FR HUB - DesyncScript"
-Credits.TextColor3 = Color3.fromRGB(100, 100, 100)
-Credits.TextSize = 12
-Credits.Font = Enum.Font.Gotham
-Credits.Parent = MainFrame
+btnSteal.MouseButton1Click:Connect(function()
+    Settings.InstaSteal = not Settings.InstaSteal
+    setStealActive(Settings.InstaSteal)
+    isInstaStealActive = Settings.InstaSteal
+    UpdateStatus()
+end)
 
-local MinimizeBtn = Instance.new("TextButton")
-MinimizeBtn.Name = "MinimizeBtn"
-MinimizeBtn.Size = UDim2.new(0, 30, 0, 30)
-MinimizeBtn.Position = UDim2.new(1, -35, 0, 2)
-MinimizeBtn.BackgroundTransparency = 1
-MinimizeBtn.Text = "-"
-MinimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-MinimizeBtn.TextSize = 24
-MinimizeBtn.Font = Enum.Font.GothamBold
-MinimizeBtn.Parent = Header
-
--- تحديث UIElements ليشمل الأزرار الجديدة
-local UIElements = {ToggleBtn, StatusLabel, RealPosLabel, AutoLeftBtn, AutoRightBtn, SaveSettingsBtn, Credits}
-
-MinimizeBtn.MouseButton1Click:Connect(function()
-    ScriptSettings.Minimized = not ScriptSettings.Minimized
+-- Settings Button Toggle
+SettingsBtn.MouseButton1Click:Connect(function()
+    Settings.SettingsVisible = not Settings.SettingsVisible
+    SettingsPanel.Visible = Settings.SettingsVisible
     
-    if ScriptSettings.Minimized then
-        MinimizeBtn.Text = "+"
-        TweenService:Create(MainFrame, TweenInfo.new(0.3), {
-            Size = UDim2.new(0, 260, 0, 35)
+    -- Rotate icon
+    TweenService:Create(SettingsBtn, TweenInfo.new(0.3), {
+        Rotation = Settings.SettingsVisible and 45 or 0
+    }):Play()
+    
+    -- Animate panel
+    if Settings.SettingsVisible then
+        SettingsPanel.Size = UDim2.new(1, 0, 0, 0)
+        TweenService:Create(SettingsPanel, TweenInfo.new(0.3, Enum.EasingStyle.Back), {
+            Size = UDim2.new(1, 0, 0, 90)
         }):Play()
-        for _, element in ipairs(UIElements) do
-            element.Visible = false
-        end
-    else
-        MinimizeBtn.Text = "-"
-        TweenService:Create(MainFrame, TweenInfo.new(0.3), {
-            Size = UDim2.new(0, 260, 0, 380)
-        }):Play()
-        for _, element in ipairs(UIElements) do
-            element.Visible = true
-        end
-    end
-end)
-
--- ==================== [9] Respawn Handler ====================
-
-LocalPlayer.CharacterAdded:Connect(function(newChar)
-    -- إعادة تشغيل Desync إذا كان مفعل
-    if DesyncEnabled then
-        task.wait(0.5)
-        OnCharacterAdded(newChar)
     end
     
-    -- إعادة تشغيل Auto إذا كان مفعل
-    if ScriptSettings.AutoLeft or ScriptSettings.AutoRight then
-        task.wait(0.5)
-        AutoPhase = "START"
-        WaitingForSteal = false
+    UpdateStatus()
+end)
+
+-- Minimize
+local isMinimized = false
+MinBtn.MouseButton1Click:Connect(function()
+    isMinimized = not isMinimized
+    Content.Visible = not isMinimized
+    Main.Size = isMinimized and UDim2.new(0, 240, 0, 40) or UDim2.new(0, 240, 0, 280)
+    MinBtn.Text = isMinimized and "+" or "−"
+end)
+
+-- Dragging
+local dragging, dragStart, startPos
+TitleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = Main.Position
     end
 end)
 
--- ==================== [10] Auto Load ====================
-
-task.delay(1, function()
-    if ScriptSettings.AutoDesync and not DesyncEnabled then
-        ToggleDesync()
+TitleBar.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end
 end)
 
-Notify("FR HUB", "تم التحميل بنجاح! - Desync + Auto Left/Right", 4)
+TitleBar.InputEnded:Connect(function() dragging = false end)
+
+-- Start Systems
+StartInstaStealSystem()
+
+-- Respawn
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    if Settings.AutoLeft or Settings.AutoRight then
+        CreateVelocity()
+        StartAutoSystem()
+    end
+end)
+
+-- Notify
+Notify("✨ FR HUB", "Beautiful UI Loaded! | Settings: ⚙️", 4)
