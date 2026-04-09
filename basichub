@@ -1,5 +1,5 @@
--- LEVIX FR HUB x FRHUB8 ULTIMATE - Corrected Edition
--- Fixes: Server Box shows FAKE position (not real), Galaxy = Single Jump, Weaker Gravity
+-- LEVIX FR HUB LITE - Low Pressure Edition
+-- Fixes: Reduced server load, Single box, Faster updates, 20Hz only
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -15,7 +15,7 @@ local PlayerGui = Player:WaitForChild("PlayerGui")
 
 --// Delete old
 pcall(function()
-    local old = PlayerGui:FindFirstChild("LevixFR_Ultimate")
+    local old = PlayerGui:FindFirstChild("LevixFR_Lite")
     if old then old:Destroy() end
 end)
 
@@ -26,7 +26,6 @@ local Settings = {
     Desync = false,
     InstaSteal = false,
     Galaxy = false,
-    AntiDetect = false,
     SpeedNormal = 40,
     SpeedSteal = 15,
     Minimized = false
@@ -34,8 +33,8 @@ local Settings = {
 
 -- Load saved
 pcall(function()
-    if isfile("LevixFR_Ultimate.json") then
-        local saved = HttpService:JSONDecode(readfile("LevixFR_Ultimate.json"))
+    if isfile("LevixFR_Lite.json") then
+        local saved = HttpService:JSONDecode(readfile("LevixFR_Lite.json"))
         for k, v in pairs(saved) do
             if Settings[k] ~= nil then Settings[k] = v end
         end
@@ -44,7 +43,7 @@ end)
 
 local function SaveSettings()
     pcall(function()
-        writefile("LevixFR_Ultimate.json", HttpService:JSONEncode(Settings))
+        writefile("LevixFR_Lite.json", HttpService:JSONEncode(Settings))
     end)
 end
 
@@ -70,19 +69,17 @@ local waitingForSteal = false
 local stealWaitStart = 0
 local isInstaGrabActive = false
 local DesyncEnabled = false
-local TargetServerPosition = nil -- هذا الموقع المزيف الي السيرفر يشوفه
-local ActualServerPosition = nil
-local ServerPosPart = nil
-local ServerPosHighlight = nil
-local ServerPosBillboard = nil
+local TargetServerPosition = nil -- الموقع المزيف
+local LastSentPosition = nil
+local ServerPosPart = nil -- البوكس الوحيد (الأخضر = موقع السيرفر)
 local BodyVel = nil
 local galaxyConnection = nil
-local hasJumped = false -- للقفزة الواحدة
+local hasJumped = false
 
---// Galaxy Settings (أضعف - قفزة واحدة فقط)
+--// Galaxy Settings (أضعف)
 local GalaxySettings = {
-    GravityPercent = 65, -- 65% جاذبية (أعلى من 40% = أضعف)
-    JumpBoost = 45, -- قوة القفزة الواحدة
+    GravityPercent = 70, -- 70% جاذبية (أضعف شوي بس)
+    JumpBoost = 40,
     NormalGravity = 196.2
 }
 
@@ -106,7 +103,7 @@ local function IsStealing()
     return Player:GetAttribute("Stealing") == true
 end
 
---// ==================== [FRHUB8 DESYNC SYSTEM] ====================
+--// ==================== [خفيف DESYNC - 20Hz فقط] ====================
 
 local function SetDesync(state)
     pcall(function()
@@ -121,119 +118,66 @@ local function SetDesync(state)
     end)
 end
 
+-- إرسال خفيف - مرة واحدة فقط
 local function SendFakePosition(position)
-    local cf = CFrame.new(position)
-    for i = 1, 2 do
-        pcall(function()
-            if typeof(rnet) == "table" then
-                if rnet.sendphysics then rnet.sendphysics(cf) end
-                if rnet.sendposition then rnet.sendposition(position) end
-            end
-            if typeof(delta) == "table" then
-                if delta.sendphysics then delta.sendphysics(cf) end
-                if delta.sendposition then delta.sendposition(position) end
-            end
-        end)
-        if i == 1 then task.wait(0.001) end
-    end
-end
-
-local function GetActualServerPosition()
-    if typeof(delta) == "table" and delta.get_server_position then
-        local success, pos = pcall(delta.get_server_position)
-        if success and pos and typeof(pos) == "Vector3" then
-            return pos
-        end
-    end
-    if typeof(rnet) == "table" and rnet.get_server_position then
-        local success, pos = pcall(rnet.get_server_position)
-        if success and pos and typeof(pos) == "Vector3" then
-            return pos
-        end
-    end
-    return nil
-end
-
-local function FastRespawn()
     pcall(function()
-        local char = Player.Character
-        if not char then return end
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if not hrp or not hum then return end
-        
-        hrp.Velocity = Vector3.new(0, 5000, 0)
-        hrp.RotVelocity = Vector3.new(99999, 99999, 99999)
-        
-        task.delay(0.05, function()
-            if hum then hum:ChangeState(Enum.HumanoidStateType.Dead) end
-        end)
+        if typeof(rnet) == "table" then
+            if rnet.sendposition then rnet.sendposition(position) end
+        end
+        if typeof(delta) == "table" then
+            if delta.sendposition then delta.sendposition(position) end
+        end
     end)
 end
 
---// Create Server Position Visual - يعرض الموقع المزيف
-local function CreateServerPosVisual()
+--// ==================== [بوكس واحد فقط - الأخضر = موقع السيرفر] ====================
+
+local function CreateServerBox()
     if ServerPosPart then ServerPosPart:Destroy() end
-    if ServerPosHighlight then ServerPosHighlight:Destroy() end
-    if ServerPosBillboard then ServerPosBillboard:Destroy() end
     
     ServerPosPart = Instance.new("Part")
-    ServerPosPart.Name = "ServerPosVisual"
+    ServerPosPart.Name = "ServerPosition"
     ServerPosPart.Size = Vector3.new(4, 6, 4)
     ServerPosPart.Transparency = 1
     ServerPosPart.CanCollide = false
     ServerPosPart.Anchored = true
-    ServerPosPart.Color = Color3.fromRGB(255, 0, 0) -- أحمر = الموقع المزيف
+    ServerPosPart.Color = Color3.fromRGB(0, 255, 0) -- أخضر = السيرفر يشوفني هنا
     ServerPosPart.Material = Enum.Material.Neon
     ServerPosPart.Parent = workspace
     
-    ServerPosHighlight = Instance.new("BoxHandleAdornment")
-    ServerPosHighlight.Size = Vector3.new(4, 6, 4)
-    ServerPosHighlight.Color3 = Color3.fromRGB(255, 0, 0)
-    ServerPosHighlight.Transparency = 0.3
-    ServerPosHighlight.AlwaysOnTop = true
-    ServerPosHighlight.Adornee = ServerPosPart
-    ServerPosHighlight.Parent = workspace
-    ServerPosHighlight.Visible = false
+    -- هايلايت بسيط
+    local highlight = Instance.new("BoxHandleAdornment")
+    highlight.Size = Vector3.new(4, 6, 4)
+    highlight.Color3 = Color3.fromRGB(0, 255, 0)
+    highlight.Transparency = 0.4
+    highlight.AlwaysOnTop = true
+    highlight.Adornee = ServerPosPart
+    highlight.Parent = ServerPosPart
     
-    ServerPosBillboard = Instance.new("BillboardGui")
-    ServerPosBillboard.Name = "ServerPosLabel"
-    ServerPosBillboard.Size = UDim2.new(0, 200, 0, 60)
-    ServerPosBillboard.StudsOffset = Vector3.new(0, 4, 0)
-    ServerPosBillboard.AlwaysOnTop = true
-    ServerPosBillboard.Adornee = ServerPosPart
-    ServerPosBillboard.Parent = workspace
-    ServerPosBillboard.Enabled = false
+    -- ليبل بسيط
+    local billboard = Instance.new("BillboardGui")
+    billboard.Size = UDim2.new(0, 120, 0, 40)
+    billboard.StudsOffset = Vector3.new(0, 4, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Adornee = ServerPosPart
+    billboard.Parent = ServerPosPart
     
-    local TextLabel = Instance.new("TextLabel")
-    TextLabel.Name = "MainText"
-    TextLabel.Size = UDim2.new(1, 0, 0.5, 0)
-    TextLabel.BackgroundTransparency = 1
-    TextLabel.Text = "SERVER SEE YOU HERE" -- السيرفر يشوفك هنا
-    TextLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
-    TextLabel.TextStrokeTransparency = 0
-    TextLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    TextLabel.TextSize = 14
-    TextLabel.Font = Enum.Font.GothamBlack
-    TextLabel.Parent = ServerPosBillboard
+    local text = Instance.new("TextLabel")
+    text.Size = UDim2.new(1, 0, 1, 0)
+    text.BackgroundTransparency = 1
+    text.Text = "SERVER POS"
+    text.TextColor3 = Color3.fromRGB(0, 255, 0)
+    text.TextStrokeTransparency = 0.5
+    text.TextSize = 14
+    text.Font = Enum.Font.GothamBold
+    text.Parent = billboard
     
-    local PosInfo = Instance.new("TextLabel")
-    PosInfo.Name = "PosInfo"
-    PosInfo.Size = UDim2.new(1, 0, 0.5, 0)
-    PosInfo.Position = UDim2.new(0, 0, 0.5, 0)
-    PosInfo.BackgroundTransparency = 1
-    PosInfo.Text = "X: 0 Z: 0"
-    PosInfo.TextColor3 = Color3.fromRGB(255, 255, 255)
-    PosInfo.TextStrokeTransparency = 0
-    PosInfo.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    PosInfo.TextSize = 12
-    PosInfo.Font = Enum.Font.GothamBold
-    PosInfo.Parent = ServerPosBillboard
+    return billboard, text
 end
 
-CreateServerPosVisual()
+CreateServerBox()
 
---// ==================== [TOGGLE DESYNC - يحدث البوكس بالموقع المزيف] ====================
+--// ==================== [DESYNC خفيف - تحديث سريع] ====================
 
 local function ToggleDesync()
     DesyncEnabled = not DesyncEnabled
@@ -241,90 +185,58 @@ local function ToggleDesync()
     if DesyncEnabled then
         local hrp = GetHRP()
         if hrp then 
-            TargetServerPosition = hrp.Position -- يبدأ من مكانك الحالي
+            TargetServerPosition = hrp.Position 
         end
         
         SetDesync(true)
-        FastRespawn()
         
-        -- يعرض الموقع المزيف (الأحمر)
+        -- يظهر البوكس الأخضر بالموقع المزيف
         if ServerPosPart and TargetServerPosition then
             ServerPosPart.CFrame = CFrame.new(TargetServerPosition)
-            ServerPosPart.Transparency = 1
-            ServerPosHighlight.Visible = true
-            ServerPosHighlight.Color3 = Color3.fromRGB(255, 0, 0) -- أحمر = مزيف
-            ServerPosBillboard.Enabled = true
+            ServerPosPart.Parent = workspace
         end
         
-        -- FRHUB8 Loop
+        -- LOOP خفيف: 20Hz فقط (بدل 50Hz)
         local lastUpdate = 0
-        Connections.Desync = RunService.RenderStepped:Connect(function()
+        local lastSent = 0
+        
+        Connections.Desync = RunService.Heartbeat:Connect(function()
             local now = tick()
-            if now - lastUpdate < 0.02 then return end
-            lastUpdate = now
             
-            pcall(function()
-                local hrp = GetHRP()
-                if not hrp then return end
+            -- تحديث البوكس الأخضر: 30Hz (أسرع للعين)
+            if now - lastUpdate >= 0.033 then
+                lastUpdate = now
                 
-                local realPos = hrp.Position
-                
-                -- Smart follow: البوكس الأحمر (الموقع المزيف) يتحرك
-                if TargetServerPosition then
-                    local diff = realPos - TargetServerPosition
-                    local dist = diff.Magnitude
+                pcall(function()
+                    local hrp = GetHRP()
+                    if not hrp or not TargetServerPosition then return end
                     
-                    -- يتبع بذكاء
-                    if dist > 15 then
-                        TargetServerPosition = realPos + (diff.Unit * 10)
-                    elseif dist > 5 then
-                        TargetServerPosition = TargetServerPosition + (diff.Unit * 2)
-                    elseif dist > 2 then
-                        TargetServerPosition = TargetServerPosition + (diff.Unit * 0.5)
+                    local realPos = hrp.Position
+                    local diff = realPos - TargetServerPosition
+                    
+                    -- يتبع ببطء (rubber band)
+                    if diff.Magnitude > 3 then
+                        TargetServerPosition = TargetServerPosition + (diff.Unit * 1.5)
                     end
                     
-                    -- يرسل الموقع المزيف للسيرفر
-                    SendFakePosition(TargetServerPosition)
-                    
-                    -- يحدث البوكس الأحمر بالموقع المزيف (مو الحقيقي!)
+                    -- يحدث البوكس الأخضر (السيرفر يشوفني هنا)
                     if ServerPosPart then
                         ServerPosPart.CFrame = CFrame.new(TargetServerPosition)
-                        
-                        -- يتحقق من نجاح Desync
-                        ActualServerPosition = GetActualServerPosition()
-                        
-                        if ServerPosBillboard then
-                            local fakePos = TargetServerPosition
-                            local posText = string.format("FAKE: X:%d Z:%d", math.floor(fakePos.X), math.floor(fakePos.Z))
-                            
-                            if ActualServerPosition then
-                                local errorDist = (ActualServerPosition - fakePos).Magnitude
-                                posText = posText .. string.format("\nError: %.1fm", errorDist)
-                                
-                                -- لون حسب النجاح
-                                if errorDist < 5 then
-                                    ServerPosHighlight.Color3 = Color3.fromRGB(0, 255, 0) -- أخضر = ناجح
-                                    ServerPosBillboard.MainText.Text = "SERVER SEE YOU HERE (GOOD)"
-                                    ServerPosBillboard.MainText.TextColor3 = Color3.fromRGB(0, 255, 0)
-                                elseif errorDist < 15 then
-                                    ServerPosHighlight.Color3 = Color3.fromRGB(255, 255, 0) -- أصفر = متوسط
-                                    ServerPosBillboard.MainText.TextColor3 = Color3.fromRGB(255, 255, 0)
-                                else
-                                    ServerPosHighlight.Color3 = Color3.fromRGB(255, 0, 0) -- أحمر = فشل
-                                    ServerPosBillboard.MainText.TextColor3 = Color3.fromRGB(255, 0, 0)
-                                end
-                            else
-                                ServerPosBillboard.MainText.Text = "SERVER SEE YOU HERE"
-                            end
-                            
-                            ServerPosBillboard.PosInfo.Text = posText
-                        end
                     end
+                end)
+            end
+            
+            -- إرسال للسيرفر: 20Hz فقط (أقل ضغط)
+            if now - lastSent >= 0.05 then
+                lastSent = now
+                
+                if TargetServerPosition then
+                    SendFakePosition(TargetServerPosition)
                 end
-            end)
+            end
         end)
         
-        print("[LevixFR] Desync ON - Server sees FAKE position")
+        print("[Desync] ON - 20Hz (Low Pressure)")
     else
         SetDesync(false)
         if Connections.Desync then
@@ -332,28 +244,21 @@ local function ToggleDesync()
             Connections.Desync = nil
         end
         TargetServerPosition = nil
-        ActualServerPosition = nil
         
-        if ServerPosHighlight then 
-            ServerPosHighlight.Visible = false 
-        end
-        if ServerPosBillboard then 
-            ServerPosBillboard.Enabled = false 
+        if ServerPosPart then 
+            ServerPosPart.CFrame = CFrame.new(0, -1000, 0) -- يخفي
         end
         
-        print("[LevixFR] Desync OFF")
+        print("[Desync] OFF")
     end
     
     return DesyncEnabled
 end
 
---// ==================== [GALAXY MODE - قفزة واحدة فقط] ====================
+--// ==================== [GALAXY - قفزة واحدة] ====================
 
 local function EnableGalaxy()
-    -- جاذبية أضعف (65% = أعلى من العادي قليلاً)
     Workspace.Gravity = GalaxySettings.NormalGravity * (GalaxySettings.GravityPercent / 100)
-    
-    -- يمسك Space مرة واحدة فقط
     hasJumped = false
     
     galaxyConnection = UserInputService.InputBegan:Connect(function(input, gpe)
@@ -362,9 +267,7 @@ local function EnableGalaxy()
             hasJumped = true
             
             local hrp = GetHRP()
-            local hum = GetHumanoid()
-            if hrp and hum then
-                -- قفزة واحدة بقوة محددة
+            if hrp then
                 hrp.AssemblyLinearVelocity = Vector3.new(
                     hrp.AssemblyLinearVelocity.X,
                     GalaxySettings.JumpBoost,
@@ -372,14 +275,12 @@ local function EnableGalaxy()
                 )
             end
             
-            -- يرجع الجاذبية الطبيعية بعد القفزة
-            task.delay(0.5, function()
+            -- يرجع الجاذبية بعد القفزة
+            task.delay(0.6, function()
                 Workspace.Gravity = GalaxySettings.NormalGravity
             end)
         end
     end)
-    
-    print("[Galaxy] Enabled - Single Jump Mode")
 end
 
 local function DisableGalaxy()
@@ -389,7 +290,6 @@ local function DisableGalaxy()
     end
     Workspace.Gravity = GalaxySettings.NormalGravity
     hasJumped = false
-    print("[Galaxy] Disabled")
 end
 
 --// ==================== [AUTO SYSTEM] ====================
@@ -470,8 +370,7 @@ local function StartAutoSystem()
             end
             
             local baseSpeed = IsStealing() and Settings.SpeedSteal or Settings.SpeedNormal
-            local jitter = 1 + (math.random(-20, 20) / 1000)
-            local speed = baseSpeed * jitter
+            local speed = baseSpeed * (1 + (math.random(-10, 10) / 1000))
             
             local dir = (targetPos - hrp.Position).Unit
             dir = Vector3.new(dir.X, 0, dir.Z).Unit
@@ -509,7 +408,7 @@ end
 --// ==================== [INSTA STEAL] ====================
 
 task.spawn(function()
-    while task.wait(0.08) do
+    while task.wait(0.1) do -- أبطأ شوي (0.1 بدل 0.08)
         if not isInstaGrabActive then continue end
         
         pcall(function()
@@ -525,7 +424,7 @@ task.spawn(function()
                             if att then
                                 for _, prompt in pairs(att:GetChildren()) do
                                     if prompt:IsA("ProximityPrompt") then
-                                        prompt.HoldDuration = 0.01
+                                        prompt.HoldDuration = 0.02 -- أبطأ شوي
                                     end
                                 end
                             end
@@ -547,56 +446,49 @@ task.spawn(function()
     end
 end)
 
---// ==================== [UI] ====================
+--// ==================== [UI بسيط] ====================
 
 local SG = Instance.new("ScreenGui")
-SG.Name = "LevixFR_Ultimate"
+SG.Name = "LevixFR_Lite"
 SG.ResetOnSpawn = false
 SG.Parent = PlayerGui
 
 local MainContainer = Instance.new("Frame")
 MainContainer.Name = "MainContainer"
-MainContainer.Size = UDim2.new(0, 220, 0, 200)
-MainContainer.Position = UDim2.new(0.5, -110, 0.5, -100)
+MainContainer.Size = UDim2.new(0, 200, 0, 180)
+MainContainer.Position = UDim2.new(0.5, -100, 0.5, -90)
 MainContainer.BackgroundTransparency = 1
 MainContainer.Parent = SG
 
 local Main = Instance.new("Frame")
 Main.Name = "Main"
-Main.Size = UDim2.new(0, 220, 0, 200)
-Main.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+Main.Size = UDim2.new(0, 200, 0, 180)
+Main.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
 Main.BorderSizePixel = 0
 Main.ClipsDescendants = true
 Main.Parent = MainContainer
 
-Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 12)
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10)
 
 local Border = Instance.new("UIStroke")
-Border.Thickness = 2
-Border.Color = Color3.fromRGB(0, 255, 150)
-Border.Transparency = 0.3
+Border.Thickness = 1
+Border.Color = Color3.fromRGB(0, 200, 100)
+Border.Transparency = 0.5
 Border.Parent = Main
 
-task.spawn(function()
-    while Main.Parent do
-        Border.Color = Color3.fromHSV((tick() * 0.1) % 1, 0.8, 1)
-        task.wait(0.1)
-    end
-end)
-
 local Header = Instance.new("Frame")
-Header.Size = UDim2.new(1, 0, 0, 30)
-Header.BackgroundColor3 = Color3.fromRGB(25, 25, 40)
+Header.Size = UDim2.new(1, 0, 0, 28)
+Header.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
 Header.BackgroundTransparency = 0.5
 Header.BorderSizePixel = 0
 Header.Parent = Main
-Instance.new("UICorner", Header).CornerRadius = UDim.new(0, 12)
+Instance.new("UICorner", Header).CornerRadius = UDim.new(0, 10)
 
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -60, 1, 0)
+Title.Size = UDim2.new(1, -40, 1, 0)
 Title.Position = UDim2.new(0, 10, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "⚡ FR HUB ULTIMATE"
+Title.Text = "⚡ FR HUB LITE"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 12
 Title.Font = Enum.Font.GothamBlack
@@ -604,24 +496,24 @@ Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = Header
 
 local MinBtn = Instance.new("TextButton")
-MinBtn.Size = UDim2.new(0, 24, 0, 24)
-MinBtn.Position = UDim2.new(1, -28, 0.5, -12)
+MinBtn.Size = UDim2.new(0, 22, 0, 22)
+MinBtn.Position = UDim2.new(1, -26, 0.5, -11)
 MinBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
 MinBtn.Text = "−"
 MinBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 MinBtn.TextSize = 14
 MinBtn.Font = Enum.Font.GothamBold
 MinBtn.Parent = Header
-Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 6)
+Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 5)
 
 local Content = Instance.new("Frame")
-Content.Size = UDim2.new(1, -16, 1, -38)
-Content.Position = UDim2.new(0, 8, 0, 34)
+Content.Size = UDim2.new(1, -16, 1, -36)
+Content.Position = UDim2.new(0, 8, 0, 32)
 Content.BackgroundTransparency = 1
 Content.Parent = Main
 
 local Status = Instance.new("TextLabel")
-Status.Size = UDim2.new(1, 0, 0, 20)
+Status.Size = UDim2.new(1, 0, 0, 18)
 Status.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
 Status.BackgroundTransparency = 0.3
 Status.Text = "Ready | N:40 | S:15"
@@ -629,20 +521,20 @@ Status.TextColor3 = Color3.fromRGB(100, 255, 150)
 Status.TextSize = 9
 Status.Font = Enum.Font.GothamBold
 Status.Parent = Content
-Instance.new("UICorner", Status).CornerRadius = UDim.new(0, 6)
+Instance.new("UICorner", Status).CornerRadius = UDim.new(0, 4)
 
 -- Button creator
 local function CreateButton(name, y, color, icon, callback)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, 0, 0, 26)
+    btn.Size = UDim2.new(1, 0, 0, 24)
     btn.Position = UDim2.new(0, 0, 0, y)
-    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+    btn.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
     btn.BorderSizePixel = 0
     btn.Text = ""
     btn.AutoButtonColor = false
     btn.Parent = Content
     
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
     
     local Stroke = Instance.new("UIStroke")
     Stroke.Thickness = 1
@@ -651,18 +543,18 @@ local function CreateButton(name, y, color, icon, callback)
     Stroke.Parent = btn
     
     local IconLabel = Instance.new("TextLabel")
-    IconLabel.Size = UDim2.new(0, 20, 0, 20)
-    IconLabel.Position = UDim2.new(0, 8, 0.5, -10)
+    IconLabel.Size = UDim2.new(0, 18, 0, 18)
+    IconLabel.Position = UDim2.new(0, 6, 0.5, -9)
     IconLabel.BackgroundTransparency = 1
     IconLabel.Text = icon
     IconLabel.TextColor3 = color
     IconLabel.Font = Enum.Font.SourceSansBold
-    IconLabel.TextSize = 14
+    IconLabel.TextSize = 12
     IconLabel.Parent = btn
     
     local TextLabel = Instance.new("TextLabel")
-    TextLabel.Size = UDim2.new(1, -70, 1, 0)
-    TextLabel.Position = UDim2.new(0, 32, 0, 0)
+    TextLabel.Size = UDim2.new(1, -60, 1, 0)
+    TextLabel.Position = UDim2.new(0, 28, 0, 0)
     TextLabel.BackgroundTransparency = 1
     TextLabel.Text = name .. ": OFF"
     TextLabel.TextColor3 = Color3.fromRGB(180, 180, 200)
@@ -672,8 +564,8 @@ local function CreateButton(name, y, color, icon, callback)
     TextLabel.Parent = btn
     
     local StatusCircle = Instance.new("Frame")
-    StatusCircle.Size = UDim2.new(0, 10, 0, 10)
-    StatusCircle.Position = UDim2.new(1, -16, 0.5, -5)
+    StatusCircle.Size = UDim2.new(0, 8, 0, 8)
+    StatusCircle.Position = UDim2.new(1, -14, 0.5, -4)
     StatusCircle.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
     StatusCircle.BorderSizePixel = 0
     StatusCircle.Parent = btn
@@ -684,13 +576,13 @@ local function CreateButton(name, y, color, icon, callback)
     local function SetVisual(active)
         isActive = active
         if active then
-            TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 65)}):Play()
+            TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(45, 45, 65)}):Play()
             TweenService:Create(Stroke, TweenInfo.new(0.2), {Color = color, Transparency = 0}):Play()
             TweenService:Create(TextLabel, TweenInfo.new(0.2), {TextColor3 = color}):Play()
             TweenService:Create(StatusCircle, TweenInfo.new(0.2), {BackgroundColor3 = color}):Play()
             TextLabel.Text = name .. ": ON"
         else
-            TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(30, 30, 45)}):Play()
+            TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(35, 35, 50)}):Play()
             TweenService:Create(Stroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(60, 60, 80), Transparency = 0.5}):Play()
             TweenService:Create(TextLabel, TweenInfo.new(0.2), {TextColor3 = Color3.fromRGB(180, 180, 200)}):Play()
             TweenService:Create(StatusCircle, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(100, 100, 100)}):Play()
@@ -700,30 +592,19 @@ local function CreateButton(name, y, color, icon, callback)
     
     btn.MouseEnter:Connect(function()
         if not isActive then
-            TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(35, 35, 55)}):Play()
+            TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(40, 40, 60)}):Play()
         end
     end)
     
     btn.MouseLeave:Connect(function()
         if not isActive then
-            TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(30, 30, 45)}):Play()
+            TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(35, 35, 50)}):Play()
         end
     end)
     
     btn.MouseButton1Click:Connect(function()
         local newState = callback()
         SetVisual(newState)
-        
-        local ripple = Instance.new("Frame")
-        ripple.Size = UDim2.new(0, 0, 0, 0)
-        ripple.Position = UDim2.new(0.5, 0, 0.5, 0)
-        ripple.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-        ripple.BackgroundTransparency = 0.7
-        ripple.ZIndex = 10
-        ripple.Parent = btn
-        Instance.new("UICorner", ripple).CornerRadius = UDim.new(1, 0)
-        TweenService:Create(ripple, TweenInfo.new(0.5), {Size = UDim2.new(2, 0, 2, 0), Position = UDim2.new(-0.5, 0, -0.5, 0), BackgroundTransparency = 1}):Play()
-        task.delay(0.5, function() ripple:Destroy() end)
     end)
     
     return SetVisual
@@ -731,14 +612,10 @@ end
 
 local updateLeft, updateRight, updateDesync, updateSteal, updateGalaxy
 
--- Auto Left
-updateLeft = CreateButton("Auto Left", 24, Color3.fromRGB(0, 255, 150), "◄", function()
+updateLeft = CreateButton("Auto Left", 22, Color3.fromRGB(0, 255, 150), "◄", function()
     Settings.AutoLeft = not Settings.AutoLeft
     if Settings.AutoLeft then
-        if Settings.AutoRight then
-            Settings.AutoRight = false
-            updateRight(false)
-        end
+        if Settings.AutoRight then Settings.AutoRight = false updateRight(false) end
         autoPhase = "START"
         waitingForSteal = false
         stealWaitStart = 0
@@ -750,14 +627,10 @@ updateLeft = CreateButton("Auto Left", 24, Color3.fromRGB(0, 255, 150), "◄", f
     return Settings.AutoLeft
 end)
 
--- Auto Right
-updateRight = CreateButton("Auto Right", 52, Color3.fromRGB(0, 200, 255), "►", function()
+updateRight = CreateButton("Auto Right", 46, Color3.fromRGB(0, 200, 255), "►", function()
     Settings.AutoRight = not Settings.AutoRight
     if Settings.AutoRight then
-        if Settings.AutoLeft then
-            Settings.AutoLeft = false
-            updateLeft(false)
-        end
+        if Settings.AutoLeft then Settings.AutoLeft = false updateLeft(false) end
         autoPhase = "START"
         waitingForSteal = false
         stealWaitStart = 0
@@ -769,28 +642,21 @@ updateRight = CreateButton("Auto Right", 52, Color3.fromRGB(0, 200, 255), "►",
     return Settings.AutoRight
 end)
 
--- Galaxy (قفزة واحدة)
-updateGalaxy = CreateButton("Galaxy", 80, Color3.fromRGB(255, 100, 200), "🌙", function()
+updateGalaxy = CreateButton("Galaxy", 70, Color3.fromRGB(255, 100, 200), "🌙", function()
     Settings.Galaxy = not Settings.Galaxy
-    if Settings.Galaxy then
-        EnableGalaxy()
-    else
-        DisableGalaxy()
-    end
+    if Settings.Galaxy then EnableGalaxy() else DisableGalaxy() end
     SaveSettings()
     return Settings.Galaxy
 end)
 
--- Desync
-updateDesync = CreateButton("Desync", 108, Color3.fromRGB(255, 50, 100), "👻", function()
+updateDesync = CreateButton("Desync", 94, Color3.fromRGB(255, 50, 100), "👻", function()
     local state = ToggleDesync()
     Settings.Desync = state
     SaveSettings()
     return state
 end)
 
--- Insta Steal
-updateSteal = CreateButton("Insta Steal", 136, Color3.fromRGB(255, 200, 50), "⚡", function()
+updateSteal = CreateButton("Insta Steal", 118, Color3.fromRGB(255, 200, 50), "⚡", function()
     Settings.InstaSteal = not Settings.InstaSteal
     isInstaGrabActive = Settings.InstaSteal
     SaveSettings()
@@ -806,11 +672,11 @@ MinBtn.MouseButton1Click:Connect(function()
     
     if isMinimized then
         Content.Visible = false
-        TweenService:Create(Main, TweenInfo.new(0.3), {Size = UDim2.new(0, 220, 0, 30)}):Play()
+        TweenService:Create(Main, TweenInfo.new(0.3), {Size = UDim2.new(0, 200, 0, 28)}):Play()
         MinBtn.Text = "+"
     else
         Content.Visible = true
-        TweenService:Create(Main, TweenInfo.new(0.3), {Size = UDim2.new(0, 220, 0, 200)}):Play()
+        TweenService:Create(Main, TweenInfo.new(0.3), {Size = UDim2.new(0, 200, 0, 180)}):Play()
         MinBtn.Text = "−"
     end
 end)
@@ -858,7 +724,7 @@ end)
 Player.CharacterAdded:Connect(function()
     task.wait(0.5)
     
-    CreateServerPosVisual()
+    CreateServerBox()
     
     if Settings.AutoLeft or Settings.AutoRight then
         autoPhase = "START"
@@ -880,8 +746,6 @@ Player.CharacterAdded:Connect(function()
             SetDesync(true)
             if ServerPosPart then
                 ServerPosPart.CFrame = CFrame.new(TargetServerPosition)
-                ServerPosHighlight.Visible = true
-                ServerPosBillboard.Enabled = true
             end
         end
     end
@@ -890,17 +754,17 @@ end)
 -- Restore minimized
 if Settings.Minimized then
     Content.Visible = false
-    Main.Size = UDim2.new(0, 220, 0, 30)
+    Main.Size = UDim2.new(0, 200, 0, 28)
     MinBtn.Text = "+"
 end
 
 -- Notification
 pcall(function()
     StarterGui:SetCore("SendNotification", {
-        Title = "⚡ FR HUB ULTIMATE",
-        Text = "Server Box = FAKE Pos | Galaxy = Single Jump",
+        Title = "⚡ FR HUB LITE",
+        Text = "20Hz Desync | Fast Green Box | Low Server Load",
         Duration = 3
     })
 end)
 
-print("[LevixFR] ULTIMATE LOADED | Server Box shows FAKE position | Galaxy = One Jump Only")
+print("[LevixFR] LITE LOADED | 20Hz only | Green Box = Server Pos | Fast Updates")
