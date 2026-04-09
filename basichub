@@ -1,5 +1,5 @@
--- FR HUB FOHUB STYLE - Smart Position Update
--- Original FOHUB + Updates every 2s or 5 studs | No jitter | No FastRespawn
+-- FR HUB FOHUB STYLE + Insta Steal Button
+-- FOHUB Desync + Fast Steal System
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
@@ -9,6 +9,7 @@ local TweenService = game:GetService("TweenService")
 local HttpService = game:GetService("HttpService")
 local StarterGui = game:GetService("StarterGui")
 local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local function Notify(title, text, duration)
     duration = duration or 3
@@ -30,6 +31,7 @@ _G.FRHUB_FOHUB_LOADED = true
 
 local ScriptSettings = {
     AutoDesync = false,
+    AutoSteal = false,
     Minimized = false
 }
 
@@ -54,14 +56,14 @@ LoadSettings()
 
 --// UI
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "FRHUB_FOHUB_V1"
+ScreenGui.Name = "FRHUB_FOHUB_V2"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 260, 0, 320)
-MainFrame.Position = UDim2.new(0.5, -130, 0.4, -160)
+MainFrame.Size = UDim2.new(0, 260, 0, 380) -- زيادة الارتفاع للزر الجديد
+MainFrame.Position = UDim2.new(0.5, -130, 0.4, -190)
 MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 MainFrame.BorderSizePixel = 0
 MainFrame.ClipsDescendants = true
@@ -86,7 +88,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -50, 1, 0)
 Title.Position = UDim2.new(0, 10, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "FR HUB | FOHUB Style"
+Title.Text = "FR HUB | FOHUB + Steal"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 16
 Title.Font = Enum.Font.GothamBold
@@ -118,19 +120,19 @@ end)
 
 --// Variables
 local DesyncEnabled = false
+local StealEnabled = false
 local Connection_RenderStepped = nil
-local TargetServerPosition = nil -- الموقع المزيف (اللي يرسل للسيرفر)
-local LastAnchorPosition = nil -- آخر موقع ثابت
+local StealConnection = nil
+local TargetServerPosition = nil
+local LastAnchorPosition = nil
 local LastUpdateTime = 0
 local CharacterAddedConnection = nil
-local StatusLabel = nil
-local DistanceLabel = nil
 
 --// FOHUB Settings
 local FOHUB = {
-    UpdateInterval = 2, -- ثانيتين
-    MaxDistance = 5, -- 5 studs
-    SendRate = 0.125 -- 8Hz (أمان)
+    UpdateInterval = 2,
+    MaxDistance = 5,
+    SendRate = 0.125
 }
 
 --// Desync Functions
@@ -167,7 +169,7 @@ local function SendFakePosition(position)
     end)
 end
 
---// Visuals - بوكس واحد فقط (أخضر = الموقع المزيف الحالي)
+--// Visuals
 local ServerPosPart, ServerHighlight, ServerLabel
 
 local function CreateVisuals()
@@ -179,7 +181,7 @@ local function CreateVisuals()
     ServerPosPart.Transparency = 1
     ServerPosPart.CanCollide = false
     ServerPosPart.Anchored = true
-    ServerPosPart.Color = Color3.fromRGB(0, 255, 0) -- أخضر = الموقع المزيف
+    ServerPosPart.Color = Color3.fromRGB(0, 255, 0)
     ServerPosPart.Material = Enum.Material.Neon
     ServerPosPart.Parent = workspace
     
@@ -211,47 +213,85 @@ end
 
 CreateVisuals()
 
---// FOHUB Smart Update System
+--// FOHUB Smart Update
 local function ShouldUpdateAnchor(realPos)
     if not LastAnchorPosition then return true end
-    
     local now = tick()
     local timePassed = now - LastUpdateTime
-    
-    -- شرط 1: مرّت 2 ثانية
-    if timePassed >= FOHUB.UpdateInterval then
-        return true, "time"
-    end
-    
-    -- شرط 2: بعدنا 5 studs عن المرساة
+    if timePassed >= FOHUB.UpdateInterval then return true, "time" end
     local distance = (realPos - LastAnchorPosition).Magnitude
-    if distance >= FOHUB.MaxDistance then
-        return true, "distance"
-    end
-    
+    if distance >= FOHUB.MaxDistance then return true, "distance" end
     return false
 end
 
 local function GetUpdatedAnchor(realPos)
     local shouldUpdate, reason = ShouldUpdateAnchor(realPos)
-    
     if shouldUpdate then
-        -- تحديث قفزي (snap) - بدون تذبذب
         LastAnchorPosition = realPos
         LastUpdateTime = tick()
-        
-        if reason == "time" then
-            print("[FOHUB] Snap: 2s elapsed")
-        elseif reason == "distance" then
-            print("[FOHUB] Snap: 5 studs moved")
-        end
+        if reason == "time" then print("[FOHUB] Snap: 2s") elseif reason == "distance" then print("[FOHUB] Snap: 5st") end
     end
-    
-    -- يرجع المرساة الحالية (ثابتة لحد ما يتغير)
     return LastAnchorPosition
 end
 
---// Toggle Desync - FOHUB Style
+--// Insta Steal System
+local function ToggleSteal()
+    StealEnabled = not StealEnabled
+    
+    if StealEnabled then
+        StealConnection = task.spawn(function()
+            while StealEnabled do
+                task.wait(0.15) -- 0.15s (سريع بس مش مريب)
+                
+                pcall(function()
+                    -- سرقة الحيوانات
+                    local plots = Workspace:FindFirstChild("Plots")
+                    if plots then
+                        for _, plot in pairs(plots:GetChildren()) do
+                            local podiums = plot:FindFirstChild("AnimalPodiums")
+                            if podiums then
+                                for _, podium in pairs(podiums:GetChildren()) do
+                                    local base = podium:FindFirstChild("Base")
+                                    local spawn = base and base:FindFirstChild("Spawn")
+                                    local att = spawn and spawn:FindFirstChild("PromptAttachment")
+                                    if att then
+                                        for _, prompt in pairs(att:GetChildren()) do
+                                            if prompt:IsA("ProximityPrompt") then
+                                                prompt.HoldDuration = 0.05 -- سريع
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    
+                    -- سرقة الكرة
+                    local ball = Workspace:FindFirstChild("Basketball")
+                    if ball then
+                        local owner = ball:FindFirstChild("Owner")
+                        if owner and owner.Value ~= LocalPlayer then
+                            if ReplicatedStorage:FindFirstChild("Events") and ReplicatedStorage.Events:FindFirstChild("BallEvent") then
+                                ReplicatedStorage.Events.BallEvent:FireServer("Grab", ball)
+                            end
+                        end
+                    end
+                end)
+            end
+        end)
+        
+        Notify("FR HUB", "Insta Steal ON", 2)
+        print("[Steal] ON - 0.15s")
+    else
+        StealEnabled = false
+        Notify("FR HUB", "Insta Steal OFF", 2)
+        print("[Steal] OFF")
+    end
+    
+    return StealEnabled
+end
+
+--// Toggle Desync
 local function ToggleDesync()
     DesyncEnabled = not DesyncEnabled
     
@@ -260,53 +300,36 @@ local function ToggleDesync()
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         
         if hrp then
-            -- يبدأ من الموقع الحالي
             LastAnchorPosition = hrp.Position
             LastUpdateTime = tick()
             TargetServerPosition = LastAnchorPosition
         end
         
         SetDesync(true)
-        -- ❌ NO FastRespawn (يسبب طرد)
-        
         Notify("FR HUB", "FOHUB Desync ON | 2s/5st", 2)
         
-        -- يظهر البوكس
         if ServerPosPart and TargetServerPosition then
             ServerPosPart.CFrame = CFrame.new(TargetServerPosition)
         end
         
-        -- Loop: 8Hz إرسال + تحديث ذكي
         local lastSend = 0
-        
         Connection_RenderStepped = RunService.Heartbeat:Connect(function()
             local now = tick()
             
-            -- يتحقق من التحديث: 30Hz
             pcall(function()
                 local char = LocalPlayer.Character
                 local hrp = char and char:FindFirstChild("HumanoidRootPart")
                 if not hrp then return end
                 
                 local realPos = hrp.Position
-                
-                -- يحصل على المرساة (تتحدث كل 2s أو 5st)
                 local anchor = GetUpdatedAnchor(realPos)
                 TargetServerPosition = anchor
                 
-                -- يحدث البوكس الأخضر (الموقع المزيف)
                 if ServerPosPart then
                     ServerPosPart.CFrame = CFrame.new(TargetServerPosition)
                 end
-                
-                -- يحدث النص
-                if DistanceLabel then
-                    local dist = (realPos - TargetServerPosition).Magnitude
-                    DistanceLabel.Text = "Distance: " .. math.floor(dist) .. "st | Next: 2s or 5st"
-                end
             end)
             
-            -- إرسال للسيرفر: 8Hz فقط (الموقع الثابت/المحسّن)
             if now - lastSend >= FOHUB.SendRate then
                 lastSend = now
                 if TargetServerPosition then
@@ -317,18 +340,13 @@ local function ToggleDesync()
         
         CharacterAddedConnection = LocalPlayer.CharacterAdded:Connect(function(newChar)
             if not DesyncEnabled then return end
-            
             local hrp = newChar:WaitForChild("HumanoidRootPart", 2)
             if not hrp then return end
-            
             SetDesync(true)
-            
-            -- يعيد ضبط المرساة
             LastAnchorPosition = hrp.Position
             LastUpdateTime = tick()
             TargetServerPosition = LastAnchorPosition
             
-            -- Loop هادئ
             task.spawn(function()
                 local last = 0
                 while DesyncEnabled and newChar.Parent do
@@ -346,22 +364,11 @@ local function ToggleDesync()
         
     else
         SetDesync(false)
-        if Connection_RenderStepped then
-            Connection_RenderStepped:Disconnect()
-            Connection_RenderStepped = nil
-        end
-        if CharacterAddedConnection then
-            CharacterAddedConnection:Disconnect()
-            CharacterAddedConnection = nil
-        end
-        
+        if Connection_RenderStepped then Connection_RenderStepped:Disconnect() Connection_RenderStepped = nil end
+        if CharacterAddedConnection then CharacterAddedConnection:Disconnect() CharacterAddedConnection = nil end
         LastAnchorPosition = nil
         TargetServerPosition = nil
-        
-        if ServerPosPart then
-            ServerPosPart.CFrame = CFrame.new(0, -1000, 0)
-        end
-        
+        if ServerPosPart then ServerPosPart.CFrame = CFrame.new(0, -1000, 0) end
         Notify("FR HUB", "FOHUB Desync OFF", 2)
     end
 end
@@ -370,7 +377,7 @@ end
 local ToggleBtn = Instance.new("TextButton")
 ToggleBtn.Name = "ToggleBtn"
 ToggleBtn.Size = UDim2.new(0.9, 0, 0, 45)
-ToggleBtn.Position = UDim2.new(0.05, 0, 0.15, 0)
+ToggleBtn.Position = UDim2.new(0.05, 0, 0.12, 0)
 ToggleBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 ToggleBtn.Text = "تفعيل FOHUB Desync"
 ToggleBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -383,39 +390,57 @@ local BtnCorner = Instance.new("UICorner")
 BtnCorner.CornerRadius = UDim.new(0, 8)
 BtnCorner.Parent = ToggleBtn
 
-StatusLabel = Instance.new("TextLabel")
+--// [NEW] Insta Steal Button
+local StealBtn = Instance.new("TextButton")
+StealBtn.Name = "StealBtn"
+StealBtn.Size = UDim2.new(0.9, 0, 0, 40)
+StealBtn.Position = UDim2.new(0.05, 0, 0.28, 0) -- تحت زر Desync
+StealBtn.BackgroundColor3 = Color3.fromRGB(60, 45, 45) -- أحمر داكن
+StealBtn.Text = "⚡ تفعيل Insta Steal"
+StealBtn.TextColor3 = Color3.fromRGB(255, 200, 100)
+StealBtn.TextSize = 15
+StealBtn.Font = Enum.Font.GothamBold
+StealBtn.AutoButtonColor = false
+StealBtn.Parent = MainFrame
+
+local StealBtnCorner = Instance.new("UICorner")
+StealBtnCorner.CornerRadius = UDim.new(0, 8)
+StealBtnCorner.Parent = StealBtn
+
+local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Name = "StatusLabel"
 StatusLabel.Size = UDim2.new(0.9, 0, 0, 20)
-StatusLabel.Position = UDim2.new(0.05, 0, 0.32, 0)
+StatusLabel.Position = UDim2.new(0.05, 0, 0.42, 0)
 StatusLabel.BackgroundTransparency = 1
-StatusLabel.Text = "الحالة: متوقف"
-StatusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
-StatusLabel.TextSize = 12
+StatusLabel.Text = "Desync: متوقف | Steal: متوقف"
+StatusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+StatusLabel.TextSize = 11
 StatusLabel.Font = Enum.Font.GothamBold
 StatusLabel.Parent = MainFrame
 
-DistanceLabel = Instance.new("TextLabel")
+local DistanceLabel = Instance.new("TextLabel")
 DistanceLabel.Name = "DistanceLabel"
 DistanceLabel.Size = UDim2.new(0.9, 0, 0, 20)
-DistanceLabel.Position = UDim2.new(0.05, 0, 0.38, 0)
+DistanceLabel.Position = UDim2.new(0.05, 0, 0.48, 0)
 DistanceLabel.BackgroundTransparency = 1
-DistanceLabel.Text = "Distance: 0st | Next: 2s or 5st"
-DistanceLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-DistanceLabel.TextSize = 11
+DistanceLabel.Text = "Dist: 0st | Next: 2s or 5st"
+DistanceLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+DistanceLabel.TextSize = 10
 DistanceLabel.Font = Enum.Font.Gotham
 DistanceLabel.Parent = MainFrame
 
 local InfoLabel = Instance.new("TextLabel")
-InfoLabel.Size = UDim2.new(0.9, 0, 0, 40)
-InfoLabel.Position = UDim2.new(0.05, 0, 0.45, 0)
+InfoLabel.Size = UDim2.new(0.9, 0, 0, 50)
+InfoLabel.Position = UDim2.new(0.05, 0, 0.55, 0)
 InfoLabel.BackgroundTransparency = 1
-InfoLabel.Text = "الموقع يتحدث كل:\n2 ثواني أو 5 studs (بدون تذبذب)"
+InfoLabel.Text = "FOHUB: الموقع يتحدث كل 2s أو 5st\nSteal: سرعة عادية (0.15s)"
 InfoLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 InfoLabel.TextSize = 10
 InfoLabel.Font = Enum.Font.Gotham
 InfoLabel.TextWrapped = true
 InfoLabel.Parent = MainFrame
 
+--// Desync Button Click
 ToggleBtn.MouseButton1Click:Connect(function()
     ToggleDesync()
     if DesyncEnabled then
@@ -423,25 +448,56 @@ ToggleBtn.MouseButton1Click:Connect(function()
             BackgroundColor3 = Color3.fromRGB(0, 170, 127),
             TextColor3 = Color3.fromRGB(255, 255, 255)
         }):Play()
-        ToggleBtn.Text = "FOHUB: مفعل"
-        StatusLabel.Text = "شغال | 2s/5st"
-        StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 100)
+        ToggleBtn.Text = "✅ FOHUB: مفعل"
     else
         TweenService:Create(ToggleBtn, TweenInfo.new(0.3), {
             BackgroundColor3 = Color3.fromRGB(45, 45, 45),
             TextColor3 = Color3.fromRGB(200, 200, 200)
         }):Play()
         ToggleBtn.Text = "تفعيل FOHUB Desync"
-        StatusLabel.Text = "الحالة: متوقف"
-        StatusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
     end
+    updateStatus()
 end)
+
+--// Steal Button Click
+StealBtn.MouseButton1Click:Connect(function()
+    ToggleSteal()
+    if StealEnabled then
+        TweenService:Create(StealBtn, TweenInfo.new(0.3), {
+            BackgroundColor3 = Color3.fromRGB(170, 127, 0), -- أصفر/برتقالي
+            TextColor3 = Color3.fromRGB(255, 255, 255)
+        }):Play()
+        StealBtn.Text = "⚡ Insta Steal: مفعل"
+    else
+        TweenService:Create(StealBtn, TweenInfo.new(0.3), {
+            BackgroundColor3 = Color3.fromRGB(60, 45, 45),
+            TextColor3 = Color3.fromRGB(255, 200, 100)
+        }):Play()
+        StealBtn.Text = "⚡ تفعيل Insta Steal"
+    end
+    updateStatus()
+end)
+
+--// Update Status Text
+function updateStatus()
+    local desyncStatus = DesyncEnabled and "✅" or "❌"
+    local stealStatus = StealEnabled and "✅" or "❌"
+    StatusLabel.Text = string.format("Desync: %s | Steal: %s", desyncStatus, stealStatus)
+    
+    if DesyncEnabled and StealEnabled then
+        StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 100) -- أخضر (كل شي شغال)
+    elseif DesyncEnabled or StealEnabled then
+        StatusLabel.TextColor3 = Color3.fromRGB(255, 200, 0) -- أصفر (واحد شغال)
+    else
+        StatusLabel.TextColor3 = Color3.fromRGB(150, 150, 150) -- رمادي (متوقف)
+    end
+end
 
 local SaveSettingsBtn = Instance.new("TextButton")
 SaveSettingsBtn.Size = UDim2.new(0.9, 0, 0, 30)
-SaveSettingsBtn.Position = UDim2.new(0.05, 0, 0.6, 0)
+SaveSettingsBtn.Position = UDim2.new(0.05, 0, 0.7, 0)
 SaveSettingsBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-SaveSettingsBtn.Text = "تشغيل تلقائي"
+SaveSettingsBtn.Text = "💾 حفظ الإعدادات"
 SaveSettingsBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
 SaveSettingsBtn.TextSize = 14
 SaveSettingsBtn.Font = Enum.Font.GothamBold
@@ -453,15 +509,16 @@ SaveBtnCorner.Parent = SaveSettingsBtn
 
 SaveSettingsBtn.MouseButton1Click:Connect(function()
     ScriptSettings.AutoDesync = DesyncEnabled
+    ScriptSettings.AutoSteal = StealEnabled
     SaveSettings()
-    Notify("FR HUB", "تم الحفظ", 2)
+    Notify("FR HUB", "تم الحفظ!", 2)
 end)
 
 local Credits = Instance.new("TextLabel")
 Credits.Size = UDim2.new(1, 0, 0, 25)
 Credits.Position = UDim2.new(0, 0, 1, -25)
 Credits.BackgroundTransparency = 1
-Credits.Text = "© FR HUB - FOHUB Style"
+Credits.Text = "© FR HUB - FOHUB + Steal"
 Credits.TextColor3 = Color3.fromRGB(100, 100, 100)
 Credits.TextSize = 12
 Credits.Font = Enum.Font.Gotham
@@ -478,7 +535,7 @@ MinimizeBtn.TextSize = 24
 MinimizeBtn.Font = Enum.Font.GothamBold
 MinimizeBtn.Parent = Header
 
-local UIElements = {ToggleBtn, StatusLabel, DistanceLabel, InfoLabel, SaveSettingsBtn, Credits}
+local UIElements = {ToggleBtn, StealBtn, StatusLabel, DistanceLabel, InfoLabel, SaveSettingsBtn, Credits}
 
 MinimizeBtn.MouseButton1Click:Connect(function()
     ScriptSettings.Minimized = not ScriptSettings.Minimized
@@ -494,7 +551,7 @@ MinimizeBtn.MouseButton1Click:Connect(function()
     else
         MinimizeBtn.Text = "-"
         TweenService:Create(MainFrame, TweenInfo.new(0.3), {
-            Size = UDim2.new(0, 260, 0, 320)
+            Size = UDim2.new(0, 260, 0, 380)
         }):Play()
         for _, element in ipairs(UIElements) do
             element.Visible = true
@@ -506,8 +563,37 @@ end)
 task.delay(1, function()
     if ScriptSettings.AutoDesync and not DesyncEnabled then
         ToggleDesync()
+        TweenService:Create(ToggleBtn, TweenInfo.new(0.3), {
+            BackgroundColor3 = Color3.fromRGB(0, 170, 127),
+            TextColor3 = Color3.fromRGB(255, 255, 255)
+        }):Play()
+        ToggleBtn.Text = "✅ FOHUB: مفعل"
+    end
+    if ScriptSettings.AutoSteal and not StealEnabled then
+        ToggleSteal()
+        TweenService:Create(StealBtn, TweenInfo.new(0.3), {
+            BackgroundColor3 = Color3.fromRGB(170, 127, 0),
+            TextColor3 = Color3.fromRGB(255, 255, 255)
+        }):Play()
+        StealBtn.Text = "⚡ Insta Steal: مفعل"
+    end
+    updateStatus()
+end)
+
+-- Update distance label
+task.spawn(function()
+    while task.wait(0.3) do
+        pcall(function()
+            if DesyncEnabled and DistanceLabel then
+                local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if hrp and TargetServerPosition then
+                    local dist = (hrp.Position - TargetServerPosition).Magnitude
+                    DistanceLabel.Text = string.format("Dist: %dst | Next: 2s or 5st", math.floor(dist))
+                end
+            end
+        end)
     end
 end)
 
-Notify("FR HUB", "FOHUB Style Loaded | 2s/5st | No FastRespawn", 4)
-print("[FR HUB] FOHUB Style | Updates: 2s or 5 studs | Discrete | 8Hz")
+Notify("FR HUB", "FOHUB + Insta Steal Loaded!", 4)
+print("[FR HUB] FOHUB Style + Steal | 2s/5st | 0.15s Steal")
