@@ -1,7 +1,7 @@
--- FR HUB ULTRA LITE
--- Auto Left/Right + Desync + Insta Steal Only
+-- FR HUB ULTRA LITE - Enhanced Desync Edition
+-- Auto Left/Right + Desync (Stronger) + Insta Steal
 -- Speeds: Normal=35, Steal=13
--- Minimal UI, Settings Panel Left Side
+-- Features: Continuous Position Update, BillboardGui "مكانك"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -48,7 +48,7 @@ local function SaveSettings()
     end)
 end
 
---// Path Points (Exact from Levix)
+--// Path Points (Levix Exact)
 local LEFT_POINTS = {
     START = Vector3.new(-473.43, -7.30, 95.59),
     POINT_2 = Vector3.new(-485.73, -5.15, 95.42),
@@ -72,6 +72,8 @@ local DesyncEnabled = false
 local TargetServerPosition = nil
 local ServerPosPart = nil
 local ServerPosHighlight = nil
+local ServerPosBillboard = nil
+local LastRealPosition = nil
 
 --// Helpers
 local function GetHRP()
@@ -205,7 +207,7 @@ task.spawn(function()
     end
 end)
 
---// Desync System (FR HUB Exact)
+--// ENHANCED DESYNC SYSTEM - Stronger & Anti-Detect
 local function SetDesync(state)
     pcall(function()
         if typeof(rnet) == "table" then
@@ -249,67 +251,166 @@ local function FastRespawn()
     end)
 end
 
+--// Create Enhanced Server Position Visual with Billboard
 local function CreateServerPosVisual()
     if ServerPosPart then ServerPosPart:Destroy() end
     if ServerPosHighlight then ServerPosHighlight:Destroy() end
+    if ServerPosBillboard then ServerPosBillboard:Destroy() end
     
+    -- Create the part
     ServerPosPart = Instance.new("Part")
     ServerPosPart.Name = "ServerPosPart"
     ServerPosPart.Size = Vector3.new(4, 6, 4)
     ServerPosPart.Transparency = 1
     ServerPosPart.CanCollide = false
     ServerPosPart.Anchored = true
-    ServerPosPart.Color = Color3.fromRGB(255, 0, 0)
+    ServerPosPart.Color = Color3.fromRGB(0, 255, 100) -- Green for "your position"
     ServerPosPart.Material = Enum.Material.Neon
     ServerPosPart.Parent = workspace
     
+    -- Box highlight
     ServerPosHighlight = Instance.new("BoxHandleAdornment")
     ServerPosHighlight.Size = Vector3.new(4, 6, 4)
-    ServerPosHighlight.Color3 = Color3.fromRGB(255, 0, 0)
-    ServerPosHighlight.Transparency = 0.3
+    ServerPosHighlight.Color3 = Color3.fromRGB(0, 255, 100)
+    ServerPosHighlight.Transparency = 0.2
     ServerPosHighlight.AlwaysOnTop = true
     ServerPosHighlight.Adornee = ServerPosPart
     ServerPosHighlight.Parent = workspace
     ServerPosHighlight.Visible = false
+    
+    -- BillboardGui with "مكانك" (Your Position)
+    ServerPosBillboard = Instance.new("BillboardGui")
+    ServerPosBillboard.Name = "ServerPosLabel"
+    ServerPosBillboard.Size = UDim2.new(0, 150, 0, 50)
+    ServerPosBillboard.StudsOffset = Vector3.new(0, 4, 0)
+    ServerPosBillboard.AlwaysOnTop = true
+    ServerPosBillboard.Adornee = ServerPosPart
+    ServerPosBillboard.Parent = workspace
+    ServerPosBillboard.Enabled = false
+    
+    local TextLabel = Instance.new("TextLabel")
+    TextLabel.Name = "MainText"
+    TextLabel.Size = UDim2.new(1, 0, 1, 0)
+    TextLabel.BackgroundTransparency = 1
+    TextLabel.Text = "مكانك"
+    TextLabel.TextColor3 = Color3.fromRGB(0, 255, 100)
+    TextLabel.TextStrokeTransparency = 0
+    TextLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    TextLabel.TextSize = 20
+    TextLabel.Font = Enum.Font.GothamBlack
+    TextLabel.Parent = ServerPosBillboard
+    
+    -- Add position info below
+    local PosInfo = Instance.new("TextLabel")
+    PosInfo.Name = "PosInfo"
+    PosInfo.Size = UDim2.new(1, 0, 0.4, 0)
+    PosInfo.Position = UDim2.new(0, 0, 0.6, 0)
+    PosInfo.BackgroundTransparency = 1
+    PosInfo.Text = "X: 0, Z: 0"
+    PosInfo.TextColor3 = Color3.fromRGB(255, 255, 255)
+    PosInfo.TextStrokeTransparency = 0
+    PosInfo.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    PosInfo.TextSize = 12
+    PosInfo.Font = Enum.Font.GothamBold
+    PosInfo.Parent = ServerPosBillboard
 end
 
 CreateServerPosVisual()
 
+--// ENHANCED Desync with Continuous Update
 local function ToggleDesync()
     DesyncEnabled = not DesyncEnabled
     
     if DesyncEnabled then
         local hrp = GetHRP()
-        if hrp then TargetServerPosition = hrp.Position end
+        if hrp then 
+            TargetServerPosition = hrp.Position 
+            LastRealPosition = hrp.Position
+        end
         
         SetDesync(true)
         FastRespawn()
         
+        -- Show visual
         if ServerPosPart and TargetServerPosition then
             ServerPosPart.CFrame = CFrame.new(TargetServerPosition)
             ServerPosPart.Transparency = 1
             ServerPosHighlight.Visible = true
+            ServerPosHighlight.Color3 = Color3.fromRGB(0, 255, 100)
+            ServerPosBillboard.Enabled = true
         end
         
+        -- ENHANCED: Continuous position update with jitter for anti-detect
         Connections.Desync = RunService.RenderStepped:Connect(function()
+            pcall(function()
+                local hrp = GetHRP()
+                if not hrp then return end
+                
+                local currentRealPos = hrp.Position
+                
+                -- Update target position continuously with micro-movements (anti-afk/anti-detect)
+                if TargetServerPosition then
+                    -- Add tiny jitter to make it look natural
+                    local jitter = Vector3.new(
+                        math.random(-10, 10) / 100,
+                        0,
+                        math.random(-10, 10) / 100
+                    )
+                    
+                    -- Update target position gradually to follow real movement slightly
+                    local moveDelta = (currentRealPos - LastRealPosition) * 0.01
+                    TargetServerPosition = TargetServerPosition + moveDelta + jitter
+                    
+                    -- Send fake position multiple times for strength
+                    for i = 1, 3 do
+                        SendFakePosition(TargetServerPosition)
+                    end
+                    
+                    -- Update visual
+                    if ServerPosPart then
+                        ServerPosPart.CFrame = CFrame.new(TargetServerPosition)
+                        
+                        -- Update billboard text with coordinates
+                        if ServerPosBillboard and ServerPosBillboard:FindFirstChild("PosInfo") then
+                            ServerPosBillboard.PosInfo.Text = string.format("X: %d, Z: %d", 
+                                math.floor(TargetServerPosition.X), 
+                                math.floor(TargetServerPosition.Z))
+                        end
+                    end
+                    
+                    LastRealPosition = currentRealPos
+                end
+            end)
+        end)
+        
+        -- Additional heartbeat for extra strength
+        Connections.DesyncHeartbeat = RunService.Heartbeat:Connect(function()
             pcall(function()
                 if TargetServerPosition then
                     SendFakePosition(TargetServerPosition)
                 end
-                local hrp = GetHRP()
-                if hrp and ServerPosPart then
-                    ServerPosPart.CFrame = CFrame.new(TargetServerPosition or hrp.Position)
-                end
             end)
         end)
+        
     else
         SetDesync(false)
         if Connections.Desync then
             Connections.Desync:Disconnect()
             Connections.Desync = nil
         end
+        if Connections.DesyncHeartbeat then
+            Connections.DesyncHeartbeat:Disconnect()
+            Connections.DesyncHeartbeat = nil
+        end
         TargetServerPosition = nil
-        if ServerPosHighlight then ServerPosHighlight.Visible = false end
+        LastRealPosition = nil
+        if ServerPosHighlight then 
+            ServerPosHighlight.Visible = false 
+            ServerPosHighlight.Color3 = Color3.fromRGB(255, 0, 0)
+        end
+        if ServerPosBillboard then 
+            ServerPosBillboard.Enabled = false 
+        end
     end
     
     return DesyncEnabled
@@ -749,6 +850,9 @@ end)
 Player.CharacterAdded:Connect(function()
     task.wait(0.5)
     
+    -- Recreate visuals
+    CreateServerPosVisual()
+    
     if Settings.AutoLeft or Settings.AutoRight then
         autoPhase = "START"
         waitingForSteal = false
@@ -760,10 +864,13 @@ Player.CharacterAdded:Connect(function()
         local hrp = GetHRP()
         if hrp then
             TargetServerPosition = hrp.Position
+            LastRealPosition = hrp.Position
             SetDesync(true)
             if ServerPosPart then
                 ServerPosPart.CFrame = CFrame.new(TargetServerPosition)
                 ServerPosHighlight.Visible = true
+                ServerPosHighlight.Color3 = Color3.fromRGB(0, 255, 100)
+                ServerPosBillboard.Enabled = true
             end
         end
     end
@@ -780,9 +887,9 @@ end
 pcall(function()
     StarterGui:SetCore("SendNotification", {
         Title = "⚡ FR HUB LITE",
-        Text = "Auto: Fixed | Desync: Ready | Steal: Active",
+        Text = "Enhanced Desync Loaded! | Auto: Fixed | Steal: Active",
         Duration = 3
     })
 end)
 
-print("[FR HUB LITE] Loaded | 4 Systems | UI: 200x140 | Settings Left")
+print("[FR HUB LITE] Enhanced Desync Loaded | Continuous Update | Billboard: مكانك")
