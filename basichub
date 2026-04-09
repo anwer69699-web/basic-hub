@@ -1,6 +1,5 @@
--- LEVIX FR HUB - FULLY FIXED EDITION
--- Fixes: Auto Path Logic, Enhanced Desync, High Speed + Jitter
--- Speeds: Normal=35, Steal=13 | Optimized for performance
+-- LEVIX FR HUB - FULLY FIXED EDITION v2.0
+-- Fixes: Auto Right Logic, Galaxy Mode, Dynamic Server Pos, Auto-Update Server Box
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -26,6 +25,7 @@ local Settings = {
     AutoRight = false,
     Desync = false,
     InstaSteal = false,
+    Galaxy = false,
     SpeedNormal = 35,
     SpeedSteal = 13,
     Minimized = false
@@ -73,7 +73,20 @@ local TargetServerPosition = nil
 local ServerPosPart = nil
 local ServerPosHighlight = nil
 local ServerPosBillboard = nil
-local BodyVel = nil -- For smooth movement
+local BodyVel = nil
+local galaxyVectorForce = nil
+local galaxyAttachment = nil
+local spaceHeld = false
+local lastHopTime = 0
+local originalJumpPower = 50
+
+--// Galaxy Settings
+local GalaxySettings = {
+    GravityPercent = 40,
+    HopPower = 35,
+    HopCooldown = 0.08,
+    DefaultGravity = 196.2
+}
 
 --// Helpers
 local function GetHRP()
@@ -95,7 +108,7 @@ local function IsStealing()
     return Player:GetAttribute("Stealing") == true
 end
 
---// BodyVelocity for SMOOTH movement (better than AssemblyLinearVelocity only)
+--// BodyVelocity for SMOOTH movement
 local function CreateBodyVelocity()
     if BodyVel then BodyVel:Destroy() end
     local hrp = GetHRP()
@@ -138,11 +151,12 @@ local function StartAutoSystem()
                     waitingForSteal = false
                     autoPhase = "POINT_3"
                     print("[LevixFR] Steal success, going to POINT_3")
-                elseif tick() - stealWaitStart > 3 then -- Timeout after 3 seconds
+                elseif tick() - stealWaitStart > 2.5 then -- Timeout after 2.5 seconds
                     waitingForSteal = false
                     autoPhase = "POINT_3"
-                    print("[LevixFR] Steal timeout, continuing")
+                    print("[LevixFR] Steal timeout, continuing to POINT_3")
                 else
+                    -- FIX: Keep checking distance while waiting
                     hum:Move(Vector3.zero, false)
                     if BodyVel then BodyVel.Velocity = Vector3.new(0, 0, 0) end
                     return
@@ -159,7 +173,7 @@ local function StartAutoSystem()
             local targetPos = Vector3.new(currentPoint.X, hrp.Position.Y, currentPoint.Z)
             local dist = (targetPos - hrp.Position).Magnitude
             
-            -- FIXED: Phase transitions with proper logic
+            -- FIXED: Phase transitions with proper logic for both Left and Right
             if dist < 2.5 then
                 if autoPhase == "START" then
                     autoPhase = "POINT_2"
@@ -187,7 +201,6 @@ local function StartAutoSystem()
             
             -- Calculate speed with jitter for anti-detect
             local baseSpeed = IsStealing() and Settings.SpeedSteal or Settings.SpeedNormal
-            -- Add micro-jitter to speed (±2%)
             local jitter = 1 + (math.random(-20, 20) / 1000)
             local speed = baseSpeed * jitter
             
@@ -195,7 +208,7 @@ local function StartAutoSystem()
             local dir = (targetPos - hrp.Position).Unit
             dir = Vector3.new(dir.X, 0, dir.Z).Unit
             
-            -- Apply with BodyVelocity (SMOOTHER than AssemblyLinearVelocity)
+            -- Apply with BodyVelocity
             if BodyVel then
                 BodyVel.Velocity = Vector3.new(dir.X * speed, 0, dir.Z * speed)
             end
@@ -227,9 +240,98 @@ local function StopAutoSystem()
     end)
 end
 
+--// ==================== [NEW] Galaxy Mode System ====================
+local function setupGalaxyForce()
+    pcall(function()
+        local hrp = GetHRP()
+        if not hrp then return end
+        
+        if galaxyVectorForce then galaxyVectorForce:Destroy() end
+        if galaxyAttachment then galaxyAttachment:Destroy() end
+        
+        galaxyAttachment = Instance.new("Attachment")
+        galaxyAttachment.Parent = hrp
+        
+        galaxyVectorForce = Instance.new("VectorForce")
+        galaxyVectorForce.Attachment0 = galaxyAttachment
+        galaxyVectorForce.ApplyAtCenterOfMass = true
+        galaxyVectorForce.RelativeTo = Enum.ActuatorRelativeTo.World
+        galaxyVectorForce.Force = Vector3.new(0, 0, 0)
+        galaxyVectorForce.Parent = hrp
+        
+        -- Adjust gravity
+        workspace.Gravity = GalaxySettings.DefaultGravity * (GalaxySettings.GravityPercent / 100)
+        
+        -- Adjust jump power
+        local hum = GetHumanoid()
+        if hum then
+            if hum.JumpPower > 0 then originalJumpPower = hum.JumpPower end
+            local ratio = math.sqrt((GalaxySettings.DefaultGravity * (GalaxySettings.GravityPercent / 100)) / GalaxySettings.DefaultGravity)
+            hum.JumpPower = originalJumpPower * ratio
+        end
+    end)
+end
+
+local function updateGalaxyForce()
+    if not Settings.Galaxy or not galaxyVectorForce then return end
+    local hrp = GetHRP()
+    if not hrp then return end
+    
+    local char = Player.Character
+    if not char then return end
+    
+    local mass = 0
+    for _, p in ipairs(char:GetDescendants()) do
+        if p:IsA("BasePart") then 
+            mass = mass + p:GetMass() 
+        end
+    end
+    
+    local targetGravity = GalaxySettings.DefaultGravity * (GalaxySettings.GravityPercent / 100)
+    galaxyVectorForce.Force = Vector3.new(0, mass * (GalaxySettings.DefaultGravity - targetGravity) * 0.95, 0)
+end
+
+local function doMiniHop()
+    if not Settings.Galaxy then return end
+    pcall(function()
+        local hrp = GetHRP()
+        local hum = GetHumanoid()
+        if not hrp or not hum then return end
+        
+        if tick() - lastHopTime < GalaxySettings.HopCooldown then return end
+        lastHopTime = tick()
+        
+        if hum.FloorMaterial == Enum.Material.Air then
+            hrp.AssemblyLinearVelocity = Vector3.new(
+                hrp.AssemblyLinearVelocity.X, 
+                GalaxySettings.HopPower, 
+                hrp.AssemblyLinearVelocity.Z
+            )
+        end
+    end)
+end
+
+local function stopGalaxy()
+    if galaxyVectorForce then 
+        galaxyVectorForce:Destroy() 
+        galaxyVectorForce = nil 
+    end
+    if galaxyAttachment then 
+        galaxyAttachment:Destroy() 
+        galaxyAttachment = nil 
+    end
+    
+    workspace.Gravity = GalaxySettings.DefaultGravity
+    
+    local hum = GetHumanoid()
+    if hum and originalJumpPower then
+        hum.JumpPower = originalJumpPower
+    end
+end
+
 --// Insta Steal (Optimized)
 task.spawn(function()
-    while task.wait(0.08) do -- Faster check (was 0.1)
+    while task.wait(0.08) do
         if not isInstaGrabActive then continue end
         
         pcall(function()
@@ -245,7 +347,7 @@ task.spawn(function()
                             if att then
                                 for _, prompt in pairs(att:GetChildren()) do
                                     if prompt:IsA("ProximityPrompt") then
-                                        prompt.HoldDuration = 0.01 -- Faster
+                                        prompt.HoldDuration = 0.01
                                     end
                                 end
                             end
@@ -267,7 +369,7 @@ task.spawn(function()
     end
 end)
 
---// ==================== [ENHANCED] Desync System - Stronger & Anti-Lag ====================
+--// ==================== [ENHANCED] Desync System with AUTO-UPDATE Server Pos ====================
 local function SetDesync(state)
     pcall(function()
         if typeof(rnet) == "table" then
@@ -284,7 +386,6 @@ end
 local function SendFakePosition(position)
     pcall(function()
         local cf = CFrame.new(position)
-        -- Send multiple times for strength
         for i = 1, 2 do
             if typeof(rnet) == "table" then
                 if rnet.sendphysics then rnet.sendphysics(cf) end
@@ -376,7 +477,7 @@ end
 
 CreateServerPosVisual()
 
---// ENHANCED Desync - Optimized for high speed without lag
+--// ENHANCED Desync with AUTO-UPDATE Server Position
 local function ToggleDesync()
     DesyncEnabled = not DesyncEnabled
     
@@ -401,11 +502,24 @@ local function ToggleDesync()
         local lastUpdate = 0
         Connections.Desync = RunService.RenderStepped:Connect(function()
             local now = tick()
-            if now - lastUpdate < 0.033 then return end -- 30Hz update rate (was unlimited)
+            if now - lastUpdate < 0.033 then return end -- 30Hz update rate
             lastUpdate = now
             
             pcall(function()
-                if TargetServerPosition then
+                -- [NEW] Auto-update TargetServerPosition to follow player
+                local hrp = GetHRP()
+                if hrp and TargetServerPosition then
+                    -- Smooth follow - move server pos toward real pos gradually
+                    local realPos = hrp.Position
+                    local diff = realPos - TargetServerPosition
+                    
+                    -- If player moved too far, update server pos to follow
+                    if diff.Magnitude > 10 then
+                        TargetServerPosition = TargetServerPosition + (diff.Unit * 5)
+                    elseif diff.Magnitude > 2 then
+                        TargetServerPosition = TargetServerPosition + (diff.Unit * 2)
+                    end
+                    
                     -- Add micro-jitter for anti-detect
                     local jitter = Vector3.new(
                         math.random(-5, 5) / 100,
@@ -427,7 +541,7 @@ local function ToggleDesync()
             end)
         end)
         
-        print("[LevixFR] Desync ON - Optimized 30Hz")
+        print("[LevixFR] Desync ON - Auto-Update Enabled")
     else
         SetDesync(false)
         if Connections.Desync then
@@ -448,7 +562,7 @@ local function ToggleDesync()
     return DesyncEnabled
 end
 
---// UI - Compact
+--// UI - Compact with Galaxy Button
 local SG = Instance.new("ScreenGui")
 SG.Name = "LevixFR_Fixed"
 SG.ResetOnSpawn = false
@@ -456,14 +570,14 @@ SG.Parent = PlayerGui
 
 local MainContainer = Instance.new("Frame")
 MainContainer.Name = "MainContainer"
-MainContainer.Size = UDim2.new(0, 200, 0, 140)
-MainContainer.Position = UDim2.new(0.5, -100, 0.5, -70)
+MainContainer.Size = UDim2.new(0, 200, 0, 165) -- Increased height for Galaxy button
+MainContainer.Position = UDim2.new(0.5, -100, 0.5, -82)
 MainContainer.BackgroundTransparency = 1
 MainContainer.Parent = SG
 
 local Main = Instance.new("Frame")
 Main.Name = "Main"
-Main.Size = UDim2.new(0, 200, 0, 140)
+Main.Size = UDim2.new(0, 200, 0, 165)
 Main.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
 Main.BorderSizePixel = 0
 Main.ClipsDescendants = true
@@ -498,7 +612,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -50, 1, 0)
 Title.Position = UDim2.new(0, 8, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "⚡ FR HUB"
+Title.Text = "⚡ FR HUB v2.0"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 12
 Title.Font = Enum.Font.GothamBlack
@@ -641,7 +755,7 @@ local function CreateButton(name, y, color, icon, callback)
     return SetVisual
 end
 
-local updateLeft, updateRight, updateDesync, updateSteal
+local updateLeft, updateRight, updateDesync, updateSteal, updateGalaxy
 
 updateLeft = CreateButton("Auto Left", 22, Color3.fromRGB(0, 255, 150), "◄", function()
     Settings.AutoLeft = not Settings.AutoLeft
@@ -679,14 +793,39 @@ updateRight = CreateButton("Auto Right", 46, Color3.fromRGB(0, 200, 255), "►",
     return Settings.AutoRight
 end)
 
-updateDesync = CreateButton("Desync", 70, Color3.fromRGB(255, 50, 100), "👻", function()
+-- [NEW] Galaxy Button
+updateGalaxy = CreateButton("Galaxy", 70, Color3.fromRGB(255, 0, 255), "🌌", function()
+    Settings.Galaxy = not Settings.Galaxy
+    if Settings.Galaxy then
+        setupGalaxyForce()
+        -- Start Galaxy Loop
+        if not Connections.Galaxy then
+            Connections.Galaxy = RunService.Heartbeat:Connect(function()
+                if Settings.Galaxy then
+                    updateGalaxyForce()
+                    if spaceHeld then doMiniHop() end
+                end
+            end)
+        end
+    else
+        stopGalaxy()
+        if Connections.Galaxy then
+            Connections.Galaxy:Disconnect()
+            Connections.Galaxy = nil
+        end
+    end
+    SaveSettings()
+    return Settings.Galaxy
+end)
+
+updateDesync = CreateButton("Desync", 94, Color3.fromRGB(255, 50, 100), "👻", function()
     local state = ToggleDesync()
     Settings.Desync = state
     SaveSettings()
     return state
 end)
 
-updateSteal = CreateButton("Insta Steal", 94, Color3.fromRGB(255, 200, 50), "⚡", function()
+updateSteal = CreateButton("Insta Steal", 118, Color3.fromRGB(255, 200, 50), "⚡", function()
     Settings.InstaSteal = not Settings.InstaSteal
     isInstaGrabActive = Settings.InstaSteal
     SaveSettings()
@@ -819,7 +958,7 @@ MinBtn.MouseButton1Click:Connect(function()
         MinBtn.Text = "+"
     else
         Content.Visible = true
-        TweenService:Create(Main, TweenInfo.new(0.3), {Size = UDim2.new(0, 200, 0, 140)}):Play()
+        TweenService:Create(Main, TweenInfo.new(0.3), {Size = UDim2.new(0, 200, 0, 165)}):Play()
         MinBtn.Text = "−"
     end
 end)
@@ -850,13 +989,24 @@ Header.InputEnded:Connect(function(input)
     end
 end)
 
+-- Space key for Galaxy Hop
+UserInputService.InputBegan:Connect(function(i, gpe)
+    if gpe then return end
+    if i.KeyCode == Enum.KeyCode.Space then spaceHeld = true end
+end)
+
+UserInputService.InputEnded:Connect(function(i)
+    if i.KeyCode == Enum.KeyCode.Space then spaceHeld = false end
+end)
+
 -- Status Update
 task.spawn(function()
     while task.wait(0.3) do
         pcall(function()
             if Status and Status.Parent then
                 local state = Settings.AutoLeft and "Left" or Settings.AutoRight and "Right" or "Ready"
-                Status.Text = string.format("%s | N:%d | S:%d", state, Settings.SpeedNormal, Settings.SpeedSteal)
+                local galState = Settings.Galaxy and " | G" or ""
+                Status.Text = string.format("%s | N:%d | S:%d%s", state, Settings.SpeedNormal, Settings.SpeedSteal, galState)
             end
         end)
     end
@@ -873,6 +1023,11 @@ Player.CharacterAdded:Connect(function()
         waitingForSteal = false
         stealWaitStart = 0
         StartAutoSystem()
+    end
+    
+    if Settings.Galaxy then
+        task.wait(0.3)
+        setupGalaxyForce()
     end
     
     if Settings.Desync then
@@ -900,10 +1055,10 @@ end
 -- Notification
 pcall(function()
     StarterGui:SetCore("SendNotification", {
-        Title = "⚡ FR HUB FIXED",
-        Text = "Path Fixed | Desync Optimized | Speed+Jitter",
+        Title = "⚡ FR HUB v2.0",
+        Text = "Auto Right Fixed | Galaxy Added | Auto-Update Server Pos",
         Duration = 3
     })
 end)
 
-print("[LevixFR] FULLY FIXED | BodyVelocity Smooth | 30Hz Desync | Path Logic Fixed")
+print("[LevixFR] v2.0 LOADED | Fixed Right Logic | Galaxy Mode | Dynamic Server Pos")
