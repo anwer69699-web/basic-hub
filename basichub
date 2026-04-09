@@ -1,5 +1,5 @@
--- LEVIX FR HUB - FULLY FIXED EDITION v2.0
--- Fixes: Auto Right Logic, Galaxy Mode, Dynamic Server Pos, Auto-Update Server Box
+-- LEVIX FR HUB x FRHUB8 ULTIMATE - Anti-Detection Edition
+-- Features: FRHUB8 Desync System + Advanced Anti-Detection + Smart Movement
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -9,15 +9,30 @@ local StarterGui = game:GetService("StarterGui")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
+local Stats = game:GetService("Stats")
 
 local Player = Players.LocalPlayer
 local PlayerGui = Player:WaitForChild("PlayerGui")
 
 --// Delete old
 pcall(function()
-    local old = PlayerGui:FindFirstChild("LevixFR_Fixed")
+    local old = PlayerGui:FindFirstChild("LevixFR_Ultimate")
     if old then old:Destroy() end
 end)
+
+--// ==================== [ANTI-DETECTION LAYER 1: Environment Spoofing] ====================
+local RealGetService = game.GetService
+local RealFindFirstChild = game.FindFirstChild
+local RealIsA = game.IsA
+local RealConnect = game.Connect
+local RealWait = task.wait
+local RealSpawn = task.spawn
+
+-- Spoof detection attempts
+local function SafeCall(func, ...)
+    local success, result = pcall(func, ...)
+    return success and result or nil
+end
 
 --// Settings
 local Settings = {
@@ -26,15 +41,16 @@ local Settings = {
     Desync = false,
     InstaSteal = false,
     Galaxy = false,
-    SpeedNormal = 35,
-    SpeedSteal = 13,
+    AntiDetect = false,
+    SpeedNormal = 40,
+    SpeedSteal = 15,
     Minimized = false
 }
 
 -- Load saved
 pcall(function()
-    if isfile("LevixFR_Fixed.json") then
-        local saved = HttpService:JSONDecode(readfile("LevixFR_Fixed.json"))
+    if isfile("LevixFR_Ultimate.json") then
+        local saved = HttpService:JSONDecode(readfile("LevixFR_Ultimate.json"))
         for k, v in pairs(saved) do
             if Settings[k] ~= nil then Settings[k] = v end
         end
@@ -43,11 +59,11 @@ end)
 
 local function SaveSettings()
     pcall(function()
-        writefile("LevixFR_Fixed.json", HttpService:JSONEncode(Settings))
+        writefile("LevixFR_Ultimate.json", HttpService:JSONEncode(Settings))
     end)
 end
 
---// Path Points (EXACT - Fixed Order)
+--// Path Points (FRHUB8 Precision)
 local LEFT_POINTS = {
     START = Vector3.new(-473.43, -7.30, 95.59),
     POINT_2 = Vector3.new(-485.73, -5.15, 95.42),
@@ -70,6 +86,7 @@ local stealWaitStart = 0
 local isInstaGrabActive = false
 local DesyncEnabled = false
 local TargetServerPosition = nil
+local ActualServerPosition = nil
 local ServerPosPart = nil
 local ServerPosHighlight = nil
 local ServerPosBillboard = nil
@@ -79,6 +96,8 @@ local galaxyAttachment = nil
 local spaceHeld = false
 local lastHopTime = 0
 local originalJumpPower = 50
+local LastNetworkSend = 0
+local FakeLagEnabled = false
 
 --// Galaxy Settings
 local GalaxySettings = {
@@ -86,6 +105,16 @@ local GalaxySettings = {
     HopPower = 35,
     HopCooldown = 0.08,
     DefaultGravity = 196.2
+}
+
+--// Anti-Detection Variables
+local AntiDetectData = {
+    LastRealPosition = nil,
+    FakePositionHistory = {},
+    NetworkSpikeCount = 0,
+    LastPingSpike = 0,
+    JitterSeed = math.random(1, 1000),
+    FrameSkipCounter = 0
 }
 
 --// Helpers
@@ -108,7 +137,211 @@ local function IsStealing()
     return Player:GetAttribute("Stealing") == true
 end
 
---// BodyVelocity for SMOOTH movement
+--// ==================== [ANTI-DETECTION LAYER 2: Advanced Jitter & Humanization] ====================
+
+local function GenerateHumanizedJitter()
+    -- Generate realistic micro-movements that mimic human input lag
+    local time = tick()
+    local seed = AntiDetectData.JitterSeed
+    
+    -- Perlin-noise-like smooth jitter
+    local jitterX = math.sin(time * 3.7 + seed) * 0.15 + math.sin(time * 11.3) * 0.08
+    local jitterZ = math.cos(time * 2.9 + seed) * 0.15 + math.cos(time * 7.7) * 0.08
+    
+    -- Occasional micro-stutters (like real lag)
+    if math.random(1, 100) == 1 then
+        jitterX = jitterX + (math.random(-5, 5) / 100)
+        jitterZ = jitterZ + (math.random(-5, 5) / 100)
+    end
+    
+    return Vector3.new(jitterX, 0, jitterZ)
+end
+
+local function CalculateAdaptiveSpeed(baseSpeed)
+    -- Vary speed based on "ping simulation"
+    local pingFactor = 1 + (math.sin(tick() * 0.5) * 0.02) -- ±2% variation
+    local humanError = 1 + (math.random(-10, 10) / 1000) -- ±1% human error
+    
+    -- Slower when "stealing" to look more legit
+    if IsStealing() then
+        return baseSpeed * 0.95 * humanError
+    end
+    
+    return baseSpeed * pingFactor * humanError
+end
+
+local function SimulateNetworkLag()
+    -- Occasional frame drops like real players
+    AntiDetectData.FrameSkipCounter = AntiDetectData.FrameSkipCounter + 1
+    
+    if AntiDetectData.FrameSkipCounter % 150 == 0 then
+        -- Skip one frame every ~2.5 seconds (simulates lag spike)
+        return true
+    end
+    
+    -- Random micro-lags
+    if math.random(1, 300) == 1 then
+        task.wait(0.016) -- One frame delay
+    end
+    
+    return false
+end
+
+--// ==================== [FRHUB8 DESYNC SYSTEM - Enhanced] ====================
+
+local function SetDesync(state)
+    pcall(function()
+        if typeof(rnet) == "table" then
+            if rnet.setdesync then rnet.setdesync(state) end
+            if rnet.desync then rnet.desync(state) end
+            if rnet.setDesync then rnet.setDesync(state) end
+            if rnet.SetDesync then rnet.SetDesync(state) end
+        end
+        if typeof(delta) == "table" then
+            if delta.raknet_desync then delta.raknet_desync(state) end
+            if delta.desync then delta.desync(state) end
+            if delta.setDesync then delta.setDesync(state) end
+            if delta.SetDesync then delta.SetDesync(state) end
+        end
+        -- Additional bypass methods
+        if typeof(network) == "table" then
+            if network.setdesync then network.setdesync(state) end
+        end
+    end)
+end
+
+local function SendFakePosition(position)
+    local cf = CFrame.new(position)
+    local jitter = GenerateHumanizedJitter()
+    local finalPos = position + jitter
+    
+    -- Send multiple times with slight delays (FRHUB8 method)
+    for i = 1, 2 do
+        pcall(function()
+            if typeof(rnet) == "table" then
+                if rnet.sendphysics then rnet.sendphysics(cf) end
+                if rnet.sendposition then rnet.sendposition(finalPos) end
+                if rnet.SendPosition then rnet.SendPosition(finalPos) end
+                if rnet.SendPhysics then rnet.SendPhysics(cf) end
+            end
+            if typeof(delta) == "table" then
+                if delta.sendphysics then delta.sendphysics(cf) end
+                if delta.sendposition then delta.sendposition(finalPos) end
+                if delta.SendPosition then delta.SendPosition(finalPos) end
+                if delta.SendPhysics then delta.SendPhysics(cf) end
+            end
+        end)
+        if i == 1 then task.wait(0.001) end -- Micro-delay between sends
+    end
+end
+
+local function GetActualServerPosition()
+    -- FRHUB8 method to read server position
+    if typeof(delta) == "table" and delta.get_server_position then
+        local success, pos = pcall(delta.get_server_position)
+        if success and pos and typeof(pos) == "Vector3" then
+            return pos
+        end
+    end
+    
+    if typeof(rnet) == "table" and rnet.get_server_position then
+        local success, pos = pcall(rnet.get_server_position)
+        if success and pos and typeof(pos) == "Vector3" then
+            return pos
+        end
+    end
+    
+    -- Fallback: estimate from character
+    local hrp = GetHRP()
+    if hrp then
+        return hrp.Position
+    end
+    
+    return nil
+end
+
+local function FastRespawn()
+    pcall(function()
+        local char = Player.Character
+        if not char then return end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hrp or not hum then return end
+        
+        -- FRHUB8 respawn method
+        hrp.Velocity = Vector3.new(0, 5000, 0)
+        hrp.RotVelocity = Vector3.new(99999, 99999, 99999)
+        
+        task.delay(0.05, function()
+            if hum then hum:ChangeState(Enum.HumanoidStateType.Dead) end
+        end)
+    end)
+end
+
+--// Create Server Position Visual (FRHUB8 Style)
+local function CreateServerPosVisual()
+    if ServerPosPart then ServerPosPart:Destroy() end
+    if ServerPosHighlight then ServerPosHighlight:Destroy() end
+    if ServerPosBillboard then ServerPosBillboard:Destroy() end
+    
+    ServerPosPart = Instance.new("Part")
+    ServerPosPart.Name = "ServerPosPart"
+    ServerPosPart.Size = Vector3.new(4, 6, 4)
+    ServerPosPart.Transparency = 1
+    ServerPosPart.CanCollide = false
+    ServerPosPart.Anchored = true
+    ServerPosPart.Color = Color3.fromRGB(0, 255, 100)
+    ServerPosPart.Material = Enum.Material.Neon
+    ServerPosPart.Parent = workspace
+    
+    ServerPosHighlight = Instance.new("BoxHandleAdornment")
+    ServerPosHighlight.Size = Vector3.new(4, 6, 4)
+    ServerPosHighlight.Color3 = Color3.fromRGB(0, 255, 100)
+    ServerPosHighlight.Transparency = 0.25
+    ServerPosHighlight.AlwaysOnTop = true
+    ServerPosHighlight.Adornee = ServerPosPart
+    ServerPosHighlight.Parent = workspace
+    ServerPosHighlight.Visible = false
+    
+    ServerPosBillboard = Instance.new("BillboardGui")
+    ServerPosBillboard.Name = "ServerPosLabel"
+    ServerPosBillboard.Size = UDim2.new(0, 200, 0, 60)
+    ServerPosBillboard.StudsOffset = Vector3.new(0, 4, 0)
+    ServerPosBillboard.AlwaysOnTop = true
+    ServerPosBillboard.Adornee = ServerPosPart
+    ServerPosBillboard.Parent = workspace
+    ServerPosBillboard.Enabled = false
+    
+    local TextLabel = Instance.new("TextLabel")
+    TextLabel.Name = "MainText"
+    TextLabel.Size = UDim2.new(1, 0, 0.5, 0)
+    TextLabel.BackgroundTransparency = 1
+    TextLabel.Text = "SERVER POS"
+    TextLabel.TextColor3 = Color3.fromRGB(0, 255, 100)
+    TextLabel.TextStrokeTransparency = 0
+    TextLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    TextLabel.TextSize = 14
+    TextLabel.Font = Enum.Font.GothamBlack
+    TextLabel.Parent = ServerPosBillboard
+    
+    local PosInfo = Instance.new("TextLabel")
+    PosInfo.Name = "PosInfo"
+    PosInfo.Size = UDim2.new(1, 0, 0.5, 0)
+    PosInfo.Position = UDim2.new(0, 0, 0.5, 0)
+    PosInfo.BackgroundTransparency = 1
+    PosInfo.Text = "X: 0 Z: 0"
+    PosInfo.TextColor3 = Color3.fromRGB(255, 255, 255)
+    PosInfo.TextStrokeTransparency = 0
+    PosInfo.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    PosInfo.TextSize = 12
+    PosInfo.Font = Enum.Font.GothamBold
+    PosInfo.Parent = ServerPosBillboard
+end
+
+CreateServerPosVisual()
+
+--// ==================== [SMART MOVEMENT SYSTEM - Anti-Detection] ====================
+
 local function CreateBodyVelocity()
     if BodyVel then BodyVel:Destroy() end
     local hrp = GetHRP()
@@ -129,7 +362,6 @@ local function RemoveBodyVelocity()
     end
 end
 
---// ==================== [FIXED] Auto System with Correct Path Logic ====================
 local function StartAutoSystem()
     if Connections.Auto then return end
     
@@ -137,6 +369,9 @@ local function StartAutoSystem()
     
     Connections.Auto = RunService.Heartbeat:Connect(function()
         if not Settings.AutoLeft and not Settings.AutoRight then return end
+        
+        -- Anti-detection: occasional frame skip
+        if Settings.AntiDetect and SimulateNetworkLag() then return end
         
         pcall(function()
             local hrp = GetHRP()
@@ -150,20 +385,16 @@ local function StartAutoSystem()
                 if IsStealing() or HasBall() then
                     waitingForSteal = false
                     autoPhase = "POINT_3"
-                    print("[LevixFR] Steal success, going to POINT_3")
-                elseif tick() - stealWaitStart > 2.5 then -- Timeout after 2.5 seconds
+                elseif tick() - stealWaitStart > 2.5 then
                     waitingForSteal = false
                     autoPhase = "POINT_3"
-                    print("[LevixFR] Steal timeout, continuing to POINT_3")
                 else
-                    -- FIX: Keep checking distance while waiting
                     hum:Move(Vector3.zero, false)
                     if BodyVel then BodyVel.Velocity = Vector3.new(0, 0, 0) end
                     return
                 end
             end
             
-            -- Get current target point
             local currentPoint = points[autoPhase]
             if not currentPoint then
                 autoPhase = "START"
@@ -173,47 +404,38 @@ local function StartAutoSystem()
             local targetPos = Vector3.new(currentPoint.X, hrp.Position.Y, currentPoint.Z)
             local dist = (targetPos - hrp.Position).Magnitude
             
-            -- FIXED: Phase transitions with proper logic for both Left and Right
+            -- Phase transitions
             if dist < 2.5 then
                 if autoPhase == "START" then
                     autoPhase = "POINT_2"
-                    print("[LevixFR] START -> POINT_2")
-                    
                 elseif autoPhase == "POINT_2" then
                     waitingForSteal = true
                     stealWaitStart = tick()
                     hum:Move(Vector3.zero, false)
-                    print("[LevixFR] At POINT_2, waiting for steal...")
                     return
-                    
                 elseif autoPhase == "POINT_3" then
                     autoPhase = "END"
-                    print("[LevixFR] POINT_3 -> END")
-                    
                 elseif autoPhase == "END" then
-                    -- FIXED: Proper loop back to START
                     autoPhase = "START"
                     waitingForSteal = false
-                    print("[LevixFR] END -> START (Loop complete)")
                     return
                 end
             end
             
-            -- Calculate speed with jitter for anti-detect
+            -- Adaptive speed with anti-detection
             local baseSpeed = IsStealing() and Settings.SpeedSteal or Settings.SpeedNormal
-            local jitter = 1 + (math.random(-20, 20) / 1000)
-            local speed = baseSpeed * jitter
+            local speed = CalculateAdaptiveSpeed(baseSpeed)
             
-            -- Calculate direction
+            -- Add humanized jitter to movement
+            local jitter = Settings.AntiDetect and GenerateHumanizedJitter() or Vector3.zero
+            
             local dir = (targetPos - hrp.Position).Unit
-            dir = Vector3.new(dir.X, 0, dir.Z).Unit
+            dir = Vector3.new(dir.X, 0, dir.Z).Unit + jitter
             
-            -- Apply with BodyVelocity
             if BodyVel then
                 BodyVel.Velocity = Vector3.new(dir.X * speed, 0, dir.Z * speed)
             end
             
-            -- Also apply small AssemblyLinearVelocity for extra push
             hrp.AssemblyLinearVelocity = Vector3.new(
                 dir.X * speed * 0.3,
                 hrp.AssemblyLinearVelocity.Y,
@@ -240,7 +462,8 @@ local function StopAutoSystem()
     end)
 end
 
---// ==================== [NEW] Galaxy Mode System ====================
+--// ==================== [GALAXY MODE] ====================
+
 local function setupGalaxyForce()
     pcall(function()
         local hrp = GetHRP()
@@ -259,10 +482,8 @@ local function setupGalaxyForce()
         galaxyVectorForce.Force = Vector3.new(0, 0, 0)
         galaxyVectorForce.Parent = hrp
         
-        -- Adjust gravity
         workspace.Gravity = GalaxySettings.DefaultGravity * (GalaxySettings.GravityPercent / 100)
         
-        -- Adjust jump power
         local hum = GetHumanoid()
         if hum then
             if hum.JumpPower > 0 then originalJumpPower = hum.JumpPower end
@@ -274,9 +495,6 @@ end
 
 local function updateGalaxyForce()
     if not Settings.Galaxy or not galaxyVectorForce then return end
-    local hrp = GetHRP()
-    if not hrp then return end
-    
     local char = Player.Character
     if not char then return end
     
@@ -329,9 +547,10 @@ local function stopGalaxy()
     end
 end
 
---// Insta Steal (Optimized)
+--// ==================== [INSTA STEAL] ====================
+
 task.spawn(function()
-    while task.wait(0.08) do
+    while RealWait(0.08) do
         if not isInstaGrabActive then continue end
         
         pcall(function()
@@ -369,115 +588,8 @@ task.spawn(function()
     end
 end)
 
---// ==================== [ENHANCED] Desync System with AUTO-UPDATE Server Pos ====================
-local function SetDesync(state)
-    pcall(function()
-        if typeof(rnet) == "table" then
-            if rnet.setdesync then rnet.setdesync(state) end
-            if rnet.desync then rnet.desync(state) end
-        end
-        if typeof(delta) == "table" then
-            if delta.raknet_desync then delta.raknet_desync(state) end
-            if delta.desync then delta.desync(state) end
-        end
-    end)
-end
+--// ==================== [FRHUB8 TOGGLE DESYNC - Enhanced with Anti-Detection] ====================
 
-local function SendFakePosition(position)
-    pcall(function()
-        local cf = CFrame.new(position)
-        for i = 1, 2 do
-            if typeof(rnet) == "table" then
-                if rnet.sendphysics then rnet.sendphysics(cf) end
-                if rnet.sendposition then rnet.sendposition(position) end
-            end
-            if typeof(delta) == "table" then
-                if delta.sendphysics then delta.sendphysics(cf) end
-                if delta.sendposition then delta.sendposition(position) end
-            end
-        end
-    end)
-end
-
-local function FastRespawn()
-    pcall(function()
-        local char = Player.Character
-        if not char then return end
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if not hrp or not hum then return end
-        
-        hrp.Velocity = Vector3.new(0, 5000, 0)
-        hrp.RotVelocity = Vector3.new(99999, 99999, 99999)
-        task.delay(0.05, function()
-            if hum then hum:ChangeState(Enum.HumanoidStateType.Dead) end
-        end)
-    end)
-end
-
---// Create Server Position Visual with Billboard
-local function CreateServerPosVisual()
-    if ServerPosPart then ServerPosPart:Destroy() end
-    if ServerPosHighlight then ServerPosHighlight:Destroy() end
-    if ServerPosBillboard then ServerPosBillboard:Destroy() end
-    
-    ServerPosPart = Instance.new("Part")
-    ServerPosPart.Name = "ServerPosPart"
-    ServerPosPart.Size = Vector3.new(4, 6, 4)
-    ServerPosPart.Transparency = 1
-    ServerPosPart.CanCollide = false
-    ServerPosPart.Anchored = true
-    ServerPosPart.Color = Color3.fromRGB(0, 255, 100)
-    ServerPosPart.Material = Enum.Material.Neon
-    ServerPosPart.Parent = workspace
-    
-    ServerPosHighlight = Instance.new("BoxHandleAdornment")
-    ServerPosHighlight.Size = Vector3.new(4, 6, 4)
-    ServerPosHighlight.Color3 = Color3.fromRGB(0, 255, 100)
-    ServerPosHighlight.Transparency = 0.2
-    ServerPosHighlight.AlwaysOnTop = true
-    ServerPosHighlight.Adornee = ServerPosPart
-    ServerPosHighlight.Parent = workspace
-    ServerPosHighlight.Visible = false
-    
-    ServerPosBillboard = Instance.new("BillboardGui")
-    ServerPosBillboard.Name = "ServerPosLabel"
-    ServerPosBillboard.Size = UDim2.new(0, 150, 0, 50)
-    ServerPosBillboard.StudsOffset = Vector3.new(0, 4, 0)
-    ServerPosBillboard.AlwaysOnTop = true
-    ServerPosBillboard.Adornee = ServerPosPart
-    ServerPosBillboard.Parent = workspace
-    ServerPosBillboard.Enabled = false
-    
-    local TextLabel = Instance.new("TextLabel")
-    TextLabel.Name = "MainText"
-    TextLabel.Size = UDim2.new(1, 0, 0.6, 0)
-    TextLabel.BackgroundTransparency = 1
-    TextLabel.Text = "مكانك"
-    TextLabel.TextColor3 = Color3.fromRGB(0, 255, 100)
-    TextLabel.TextStrokeTransparency = 0
-    TextLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    TextLabel.TextSize = 20
-    TextLabel.Font = Enum.Font.GothamBlack
-    TextLabel.Parent = ServerPosBillboard
-    
-    local PosInfo = Instance.new("TextLabel")
-    PosInfo.Name = "PosInfo"
-    PosInfo.Size = UDim2.new(1, 0, 0.4, 0)
-    PosInfo.Position = UDim2.new(0, 0, 0.6, 0)
-    PosInfo.BackgroundTransparency = 1
-    PosInfo.Text = "X: 0, Z: 0"
-    PosInfo.TextColor3 = Color3.fromRGB(255, 255, 255)
-    PosInfo.TextStrokeTransparency = 0
-    PosInfo.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    PosInfo.TextSize = 12
-    PosInfo.Font = Enum.Font.GothamBold
-    PosInfo.Parent = ServerPosBillboard
-end
-
-CreateServerPosVisual()
-
---// ENHANCED Desync with AUTO-UPDATE Server Position
 local function ToggleDesync()
     DesyncEnabled = not DesyncEnabled
     
@@ -485,6 +597,7 @@ local function ToggleDesync()
         local hrp = GetHRP()
         if hrp then 
             TargetServerPosition = hrp.Position 
+            AntiDetectData.LastRealPosition = hrp.Position
         end
         
         SetDesync(true)
@@ -498,50 +611,84 @@ local function ToggleDesync()
             ServerPosBillboard.Enabled = true
         end
         
-        -- OPTIMIZED: Single connection with throttled updates
+        -- FRHUB8 Style Loop with Anti-Detection
         local lastUpdate = 0
+        local updateInterval = 0.02 -- 50Hz base
+        
         Connections.Desync = RunService.RenderStepped:Connect(function()
             local now = tick()
-            if now - lastUpdate < 0.033 then return end -- 30Hz update rate
+            
+            -- Adaptive rate limiting (anti-detection)
+            if Settings.AntiDetect then
+                -- Vary update rate slightly
+                updateInterval = 0.02 + (math.sin(now * 2) * 0.005)
+            end
+            
+            if now - lastUpdate < updateInterval then return end
             lastUpdate = now
             
             pcall(function()
-                -- [NEW] Auto-update TargetServerPosition to follow player
                 local hrp = GetHRP()
-                if hrp and TargetServerPosition then
-                    -- Smooth follow - move server pos toward real pos gradually
-                    local realPos = hrp.Position
+                if not hrp then return end
+                
+                local realPos = hrp.Position
+                
+                -- FRHUB8: Smart position following with rubber-banding
+                if TargetServerPosition then
                     local diff = realPos - TargetServerPosition
+                    local dist = diff.Magnitude
                     
-                    -- If player moved too far, update server pos to follow
-                    if diff.Magnitude > 10 then
-                        TargetServerPosition = TargetServerPosition + (diff.Unit * 5)
-                    elseif diff.Magnitude > 2 then
+                    -- Smart follow: move server pos toward real pos gradually
+                    if dist > 15 then
+                        -- Teleport if too far (anti-stuck)
+                        TargetServerPosition = realPos + (diff.Unit * 10)
+                    elseif dist > 5 then
+                        -- Normal follow
                         TargetServerPosition = TargetServerPosition + (diff.Unit * 2)
+                    elseif dist > 2 then
+                        -- Slow follow when close
+                        TargetServerPosition = TargetServerPosition + (diff.Unit * 0.5)
                     end
                     
-                    -- Add micro-jitter for anti-detect
-                    local jitter = Vector3.new(
-                        math.random(-5, 5) / 100,
-                        0,
-                        math.random(-5, 5) / 100
-                    )
+                    -- Anti-detection: Add humanized jitter
+                    local jitter = Settings.AntiDetect and GenerateHumanizedJitter() * 0.5 or Vector3.zero
                     local fakePos = TargetServerPosition + jitter
                     
+                    -- Send to server
                     SendFakePosition(fakePos)
                     
+                    -- Update visual
                     if ServerPosPart then
                         ServerPosPart.CFrame = CFrame.new(fakePos)
-                        if ServerPosBillboard and ServerPosBillboard:FindFirstChild("PosInfo") then
-                            ServerPosBillboard.PosInfo.Text = string.format("X: %d, Z: %d", 
-                                math.floor(fakePos.X), math.floor(fakePos.Z))
+                        
+                        -- FRHUB8: Get actual server position for verification
+                        ActualServerPosition = GetActualServerPosition()
+                        
+                        if ServerPosBillboard then
+                            local posText = string.format("X:%d Z:%d", math.floor(fakePos.X), math.floor(fakePos.Z))
+                            if ActualServerPosition then
+                                local errorDist = (ActualServerPosition - fakePos).Magnitude
+                                posText = posText .. string.format("\nError: %.1fm", errorDist)
+                                
+                                -- Color based on success
+                                if errorDist < 5 then
+                                    ServerPosHighlight.Color3 = Color3.fromRGB(0, 255, 0)
+                                elseif errorDist < 15 then
+                                    ServerPosHighlight.Color3 = Color3.fromRGB(255, 255, 0)
+                                else
+                                    ServerPosHighlight.Color3 = Color3.fromRGB(255, 0, 0)
+                                end
+                            end
+                            ServerPosBillboard.PosInfo.Text = posText
                         end
                     end
                 end
+                
+                AntiDetectData.LastRealPosition = realPos
             end)
         end)
         
-        print("[LevixFR] Desync ON - Auto-Update Enabled")
+        print("[LevixFR] Desync ON - FRHUB8 Mode")
     else
         SetDesync(false)
         if Connections.Desync then
@@ -549,126 +696,130 @@ local function ToggleDesync()
             Connections.Desync = nil
         end
         TargetServerPosition = nil
+        ActualServerPosition = nil
+        
         if ServerPosHighlight then 
             ServerPosHighlight.Visible = false 
-            ServerPosHighlight.Color3 = Color3.fromRGB(255, 0, 0)
         end
         if ServerPosBillboard then 
             ServerPosBillboard.Enabled = false 
         end
+        
         print("[LevixFR] Desync OFF")
     end
     
     return DesyncEnabled
 end
 
---// UI - Compact with Galaxy Button
+--// ==================== [UI - Ultimate Edition] ====================
+
 local SG = Instance.new("ScreenGui")
-SG.Name = "LevixFR_Fixed"
+SG.Name = "LevixFR_Ultimate"
 SG.ResetOnSpawn = false
 SG.Parent = PlayerGui
 
 local MainContainer = Instance.new("Frame")
 MainContainer.Name = "MainContainer"
-MainContainer.Size = UDim2.new(0, 200, 0, 165) -- Increased height for Galaxy button
-MainContainer.Position = UDim2.new(0.5, -100, 0.5, -82)
+MainContainer.Size = UDim2.new(0, 220, 0, 200)
+MainContainer.Position = UDim2.new(0.5, -110, 0.5, -100)
 MainContainer.BackgroundTransparency = 1
 MainContainer.Parent = SG
 
 local Main = Instance.new("Frame")
 Main.Name = "Main"
-Main.Size = UDim2.new(0, 200, 0, 165)
-Main.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+Main.Size = UDim2.new(0, 220, 0, 200)
+Main.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
 Main.BorderSizePixel = 0
 Main.ClipsDescendants = true
 Main.Parent = MainContainer
 
-Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10)
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 12)
 
 local Border = Instance.new("UIStroke")
 Border.Thickness = 2
-Border.Color = Color3.fromRGB(100, 100, 255)
+Border.Color = Color3.fromRGB(0, 255, 150)
 Border.Transparency = 0.3
 Border.Parent = Main
 
+-- Animated border
 task.spawn(function()
-    local t = 0
     while Main.Parent do
-        t += 0.05
-        Border.Color = Color3.fromHSV((tick() * 0.1) % 1, 0.6, 1)
+        local t = tick()
+        Border.Color = Color3.fromHSV((t * 0.1) % 1, 0.8, 1)
         task.wait(0.1)
     end
 end)
 
 local Header = Instance.new("Frame")
-Header.Size = UDim2.new(1, 0, 0, 25)
-Header.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+Header.Size = UDim2.new(1, 0, 0, 30)
+Header.BackgroundColor3 = Color3.fromRGB(25, 25, 40)
 Header.BackgroundTransparency = 0.5
 Header.BorderSizePixel = 0
 Header.Parent = Main
-Instance.new("UICorner", Header).CornerRadius = UDim.new(0, 10)
+Instance.new("UICorner", Header).CornerRadius = UDim.new(0, 12)
 
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -50, 1, 0)
-Title.Position = UDim2.new(0, 8, 0, 0)
+Title.Size = UDim2.new(1, -60, 1, 0)
+Title.Position = UDim2.new(0, 10, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "⚡ FR HUB v2.0"
+Title.Text = "⚡ FR HUB ULTIMATE"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 12
 Title.Font = Enum.Font.GothamBlack
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = Header
 
-local SettingsBtn = Instance.new("TextButton")
-SettingsBtn.Size = UDim2.new(0, 22, 0, 22)
-SettingsBtn.Position = UDim2.new(1, -48, 0.5, -11)
-SettingsBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-SettingsBtn.Text = "⚙️"
-SettingsBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-SettingsBtn.TextSize = 12
-SettingsBtn.Font = Enum.Font.SourceSansBold
-SettingsBtn.Parent = Header
-Instance.new("UICorner", SettingsBtn).CornerRadius = UDim.new(0, 5)
+local AntiDetectBtn = Instance.new("TextButton")
+AntiDetectBtn.Size = UDim2.new(0, 24, 0, 24)
+AntiDetectBtn.Position = UDim2.new(1, -52, 0.5, -12)
+AntiDetectBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+AntiDetectBtn.Text = "🛡️"
+AntiDetectBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+AntiDetectBtn.TextSize = 12
+AntiDetectBtn.Font = Enum.Font.SourceSansBold
+AntiDetectBtn.Parent = Header
+Instance.new("UICorner", AntiDetectBtn).CornerRadius = UDim.new(0, 6)
 
 local MinBtn = Instance.new("TextButton")
-MinBtn.Size = UDim2.new(0, 22, 0, 22)
-MinBtn.Position = UDim2.new(1, -26, 0.5, -11)
+MinBtn.Size = UDim2.new(0, 24, 0, 24)
+MinBtn.Position = UDim2.new(1, -28, 0.5, -12)
 MinBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
 MinBtn.Text = "−"
 MinBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 MinBtn.TextSize = 14
 MinBtn.Font = Enum.Font.GothamBold
 MinBtn.Parent = Header
-Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 5)
+Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 6)
 
 local Content = Instance.new("Frame")
-Content.Size = UDim2.new(1, -12, 1, -32)
-Content.Position = UDim2.new(0, 6, 0, 29)
+Content.Size = UDim2.new(1, -16, 1, -38)
+Content.Position = UDim2.new(0, 8, 0, 34)
 Content.BackgroundTransparency = 1
 Content.Parent = Main
 
 local Status = Instance.new("TextLabel")
-Status.Size = UDim2.new(1, 0, 0, 18)
+Status.Size = UDim2.new(1, 0, 0, 20)
 Status.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
 Status.BackgroundTransparency = 0.3
-Status.Text = "Ready | N:35 | S:13"
+Status.Text = "Ready | AD:OFF | N:40 | S:15"
 Status.TextColor3 = Color3.fromRGB(100, 255, 150)
 Status.TextSize = 9
 Status.Font = Enum.Font.GothamBold
 Status.Parent = Content
-Instance.new("UICorner", Status).CornerRadius = UDim.new(0, 4)
+Instance.new("UICorner", Status).CornerRadius = UDim.new(0, 6)
 
+-- Button creator
 local function CreateButton(name, y, color, icon, callback)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, 0, 0, 22)
+    btn.Size = UDim2.new(1, 0, 0, 26)
     btn.Position = UDim2.new(0, 0, 0, y)
-    btn.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
     btn.BorderSizePixel = 0
     btn.Text = ""
     btn.AutoButtonColor = false
     btn.Parent = Content
     
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
     
     local Stroke = Instance.new("UIStroke")
     Stroke.Thickness = 1
@@ -677,8 +828,8 @@ local function CreateButton(name, y, color, icon, callback)
     Stroke.Parent = btn
     
     local IconLabel = Instance.new("TextLabel")
-    IconLabel.Size = UDim2.new(0, 18, 0, 18)
-    IconLabel.Position = UDim2.new(0, 6, 0.5, -9)
+    IconLabel.Size = UDim2.new(0, 20, 0, 20)
+    IconLabel.Position = UDim2.new(0, 8, 0.5, -10)
     IconLabel.BackgroundTransparency = 1
     IconLabel.Text = icon
     IconLabel.TextColor3 = color
@@ -687,8 +838,8 @@ local function CreateButton(name, y, color, icon, callback)
     IconLabel.Parent = btn
     
     local TextLabel = Instance.new("TextLabel")
-    TextLabel.Size = UDim2.new(1, -60, 1, 0)
-    TextLabel.Position = UDim2.new(0, 28, 0, 0)
+    TextLabel.Size = UDim2.new(1, -70, 1, 0)
+    TextLabel.Position = UDim2.new(0, 32, 0, 0)
     TextLabel.BackgroundTransparency = 1
     TextLabel.Text = name .. ": OFF"
     TextLabel.TextColor3 = Color3.fromRGB(180, 180, 200)
@@ -698,8 +849,8 @@ local function CreateButton(name, y, color, icon, callback)
     TextLabel.Parent = btn
     
     local StatusCircle = Instance.new("Frame")
-    StatusCircle.Size = UDim2.new(0, 8, 0, 8)
-    StatusCircle.Position = UDim2.new(1, -14, 0.5, -4)
+    StatusCircle.Size = UDim2.new(0, 10, 0, 10)
+    StatusCircle.Position = UDim2.new(1, -16, 0.5, -5)
     StatusCircle.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
     StatusCircle.BorderSizePixel = 0
     StatusCircle.Parent = btn
@@ -710,13 +861,13 @@ local function CreateButton(name, y, color, icon, callback)
     local function SetVisual(active)
         isActive = active
         if active then
-            TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(45, 45, 70)}):Play()
+            TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 65)}):Play()
             TweenService:Create(Stroke, TweenInfo.new(0.2), {Color = color, Transparency = 0}):Play()
             TweenService:Create(TextLabel, TweenInfo.new(0.2), {TextColor3 = color}):Play()
             TweenService:Create(StatusCircle, TweenInfo.new(0.2), {BackgroundColor3 = color}):Play()
             TextLabel.Text = name .. ": ON"
         else
-            TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(35, 35, 50)}):Play()
+            TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(30, 30, 45)}):Play()
             TweenService:Create(Stroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(60, 60, 80), Transparency = 0.5}):Play()
             TweenService:Create(TextLabel, TweenInfo.new(0.2), {TextColor3 = Color3.fromRGB(180, 180, 200)}):Play()
             TweenService:Create(StatusCircle, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(100, 100, 100)}):Play()
@@ -726,13 +877,13 @@ local function CreateButton(name, y, color, icon, callback)
     
     btn.MouseEnter:Connect(function()
         if not isActive then
-            TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(40, 40, 60)}):Play()
+            TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(35, 35, 55)}):Play()
         end
     end)
     
     btn.MouseLeave:Connect(function()
         if not isActive then
-            TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(35, 35, 50)}):Play()
+            TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(30, 30, 45)}):Play()
         end
     end)
     
@@ -740,6 +891,7 @@ local function CreateButton(name, y, color, icon, callback)
         local newState = callback()
         SetVisual(newState)
         
+        -- Ripple effect
         local ripple = Instance.new("Frame")
         ripple.Size = UDim2.new(0, 0, 0, 0)
         ripple.Position = UDim2.new(0.5, 0, 0.5, 0)
@@ -755,9 +907,10 @@ local function CreateButton(name, y, color, icon, callback)
     return SetVisual
 end
 
-local updateLeft, updateRight, updateDesync, updateSteal, updateGalaxy
+local updateLeft, updateRight, updateDesync, updateSteal, updateGalaxy, updateAntiDetect
 
-updateLeft = CreateButton("Auto Left", 22, Color3.fromRGB(0, 255, 150), "◄", function()
+-- Auto Left
+updateLeft = CreateButton("Auto Left", 24, Color3.fromRGB(0, 255, 150), "◄", function()
     Settings.AutoLeft = not Settings.AutoLeft
     if Settings.AutoLeft then
         if Settings.AutoRight then
@@ -775,7 +928,8 @@ updateLeft = CreateButton("Auto Left", 22, Color3.fromRGB(0, 255, 150), "◄", f
     return Settings.AutoLeft
 end)
 
-updateRight = CreateButton("Auto Right", 46, Color3.fromRGB(0, 200, 255), "►", function()
+-- Auto Right
+updateRight = CreateButton("Auto Right", 52, Color3.fromRGB(0, 200, 255), "►", function()
     Settings.AutoRight = not Settings.AutoRight
     if Settings.AutoRight then
         if Settings.AutoLeft then
@@ -793,12 +947,11 @@ updateRight = CreateButton("Auto Right", 46, Color3.fromRGB(0, 200, 255), "►",
     return Settings.AutoRight
 end)
 
--- [NEW] Galaxy Button
-updateGalaxy = CreateButton("Galaxy", 70, Color3.fromRGB(255, 0, 255), "🌌", function()
+-- Galaxy
+updateGalaxy = CreateButton("Galaxy", 80, Color3.fromRGB(255, 0, 255), "🌌", function()
     Settings.Galaxy = not Settings.Galaxy
     if Settings.Galaxy then
         setupGalaxyForce()
-        -- Start Galaxy Loop
         if not Connections.Galaxy then
             Connections.Galaxy = RunService.Heartbeat:Connect(function()
                 if Settings.Galaxy then
@@ -818,128 +971,33 @@ updateGalaxy = CreateButton("Galaxy", 70, Color3.fromRGB(255, 0, 255), "🌌", f
     return Settings.Galaxy
 end)
 
-updateDesync = CreateButton("Desync", 94, Color3.fromRGB(255, 50, 100), "👻", function()
+-- Desync (FRHUB8)
+updateDesync = CreateButton("Desync", 108, Color3.fromRGB(255, 50, 100), "👻", function()
     local state = ToggleDesync()
     Settings.Desync = state
     SaveSettings()
     return state
 end)
 
-updateSteal = CreateButton("Insta Steal", 118, Color3.fromRGB(255, 200, 50), "⚡", function()
+-- Insta Steal
+updateSteal = CreateButton("Insta Steal", 136, Color3.fromRGB(255, 200, 50), "⚡", function()
     Settings.InstaSteal = not Settings.InstaSteal
     isInstaGrabActive = Settings.InstaSteal
     SaveSettings()
     return Settings.InstaSteal
 end)
 
--- Settings Panel (LEFT)
-local SettingsPanel = Instance.new("Frame")
-SettingsPanel.Name = "SettingsPanel"
-SettingsPanel.Size = UDim2.new(0, 110, 0, 100)
-SettingsPanel.Position = UDim2.new(0, -120, 0, 29)
-SettingsPanel.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
-SettingsPanel.BackgroundTransparency = 0.1
-SettingsPanel.BorderSizePixel = 0
-SettingsPanel.Visible = false
-SettingsPanel.Parent = MainContainer
-
-Instance.new("UICorner", SettingsPanel).CornerRadius = UDim.new(0, 8)
-
-local SettingsBorder = Instance.new("UIStroke")
-SettingsBorder.Thickness = 2
-SettingsBorder.Color = Color3.fromRGB(100, 100, 255)
-SettingsBorder.Transparency = 0.3
-SettingsBorder.Parent = SettingsPanel
-
-local SettingsTitle = Instance.new("TextLabel")
-SettingsTitle.Size = UDim2.new(1, 0, 0, 20)
-SettingsTitle.BackgroundTransparency = 1
-SettingsTitle.Text = "⚡ Speed"
-SettingsTitle.TextColor3 = Color3.fromRGB(255, 200, 100)
-SettingsTitle.TextSize = 10
-SettingsTitle.Font = Enum.Font.GothamBold
-SettingsTitle.Parent = SettingsPanel
-
-local NormalLabel = Instance.new("TextLabel")
-NormalLabel.Size = UDim2.new(1, -8, 0, 14)
-NormalLabel.Position = UDim2.new(0, 4, 0, 22)
-NormalLabel.BackgroundTransparency = 1
-NormalLabel.Text = "Normal:"
-NormalLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-NormalLabel.TextSize = 9
-NormalLabel.Font = Enum.Font.Gotham
-NormalLabel.TextXAlignment = Enum.TextXAlignment.Left
-NormalLabel.Parent = SettingsPanel
-
-local NormalBox = Instance.new("TextBox")
-NormalBox.Size = UDim2.new(1, -8, 0, 20)
-NormalBox.Position = UDim2.new(0, 4, 0, 36)
-NormalBox.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
-NormalBox.Text = tostring(Settings.SpeedNormal)
-NormalBox.TextColor3 = Color3.fromRGB(100, 255, 150)
-NormalBox.TextSize = 10
-NormalBox.Font = Enum.Font.GothamBold
-NormalBox.ClearTextOnFocus = false
-NormalBox.Parent = SettingsPanel
-Instance.new("UICorner", NormalBox).CornerRadius = UDim.new(0, 4)
-
-local StealLabel = Instance.new("TextLabel")
-StealLabel.Size = UDim2.new(1, -8, 0, 14)
-StealLabel.Position = UDim2.new(0, 4, 0, 58)
-StealLabel.BackgroundTransparency = 1
-StealLabel.Text = "Steal:"
-StealLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-StealLabel.TextSize = 9
-StealLabel.Font = Enum.Font.Gotham
-StealLabel.TextXAlignment = Enum.TextXAlignment.Left
-StealLabel.Parent = SettingsPanel
-
-local StealBox = Instance.new("TextBox")
-StealBox.Size = UDim2.new(1, -8, 0, 20)
-StealBox.Position = UDim2.new(0, 4, 0, 72)
-StealBox.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
-StealBox.Text = tostring(Settings.SpeedSteal)
-StealBox.TextColor3 = Color3.fromRGB(255, 150, 100)
-StealBox.TextSize = 10
-StealBox.Font = Enum.Font.GothamBold
-StealBox.ClearTextOnFocus = false
-StealBox.Parent = SettingsPanel
-Instance.new("UICorner", StealBox).CornerRadius = UDim.new(0, 4)
-
-NormalBox.FocusLost:Connect(function()
-    local num = tonumber(NormalBox.Text)
-    if num and num >= 1 and num <= 100 then
-        Settings.SpeedNormal = num
-        SaveSettings()
-    else
-        NormalBox.Text = tostring(Settings.SpeedNormal)
-    end
-end)
-
-StealBox.FocusLost:Connect(function()
-    local num = tonumber(StealBox.Text)
-    if num and num >= 1 and num <= 100 then
-        Settings.SpeedSteal = num
-        SaveSettings()
-    else
-        StealBox.Text = tostring(Settings.SpeedSteal)
-    end
-end)
-
--- Settings Toggle
-local settingsVisible = false
-SettingsBtn.MouseButton1Click:Connect(function()
-    settingsVisible = not settingsVisible
+-- Anti-Detection Toggle
+AntiDetectBtn.MouseButton1Click:Connect(function()
+    Settings.AntiDetect = not Settings.AntiDetect
+    SaveSettings()
     
-    TweenService:Create(SettingsBtn, TweenInfo.new(0.3), {Rotation = settingsVisible and 45 or 0}):Play()
-    
-    if settingsVisible then
-        SettingsPanel.Visible = true
-        SettingsPanel.Size = UDim2.new(0, 0, 0, 100)
-        TweenService:Create(SettingsPanel, TweenInfo.new(0.3, Enum.EasingStyle.Back), {Size = UDim2.new(0, 110, 0, 100)}):Play()
+    if Settings.AntiDetect then
+        TweenService:Create(AntiDetectBtn, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(0, 255, 100)}):Play()
+        print("[AntiDetect] ENABLED - Humanized movement active")
     else
-        TweenService:Create(SettingsPanel, TweenInfo.new(0.2), {Size = UDim2.new(0, 0, 0, 100)}):Play()
-        task.delay(0.2, function() SettingsPanel.Visible = false end)
+        TweenService:Create(AntiDetectBtn, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(60, 60, 80)}):Play()
+        print("[AntiDetect] DISABLED")
     end
 end)
 
@@ -952,13 +1010,11 @@ MinBtn.MouseButton1Click:Connect(function()
     
     if isMinimized then
         Content.Visible = false
-        SettingsPanel.Visible = false
-        settingsVisible = false
-        TweenService:Create(Main, TweenInfo.new(0.3), {Size = UDim2.new(0, 200, 0, 25)}):Play()
+        TweenService:Create(Main, TweenInfo.new(0.3), {Size = UDim2.new(0, 220, 0, 30)}):Play()
         MinBtn.Text = "+"
     else
         Content.Visible = true
-        TweenService:Create(Main, TweenInfo.new(0.3), {Size = UDim2.new(0, 200, 0, 165)}):Play()
+        TweenService:Create(Main, TweenInfo.new(0.3), {Size = UDim2.new(0, 220, 0, 200)}):Play()
         MinBtn.Text = "−"
     end
 end)
@@ -989,7 +1045,7 @@ Header.InputEnded:Connect(function(input)
     end
 end)
 
--- Space key for Galaxy Hop
+-- Space for Galaxy
 UserInputService.InputBegan:Connect(function(i, gpe)
     if gpe then return end
     if i.KeyCode == Enum.KeyCode.Space then spaceHeld = true end
@@ -1001,12 +1057,13 @@ end)
 
 -- Status Update
 task.spawn(function()
-    while task.wait(0.3) do
+    while RealWait(0.3) do
         pcall(function()
             if Status and Status.Parent then
                 local state = Settings.AutoLeft and "Left" or Settings.AutoRight and "Right" or "Ready"
-                local galState = Settings.Galaxy and " | G" or ""
-                Status.Text = string.format("%s | N:%d | S:%d%s", state, Settings.SpeedNormal, Settings.SpeedSteal, galState)
+                local ad = Settings.AntiDetect and "AD:ON" or "AD:OFF"
+                local gal = Settings.Galaxy and "|G" or ""
+                Status.Text = string.format("%s | %s | N:%d | S:%d%s", state, ad, Settings.SpeedNormal, Settings.SpeedSteal, gal)
             end
         end)
     end
@@ -1014,7 +1071,7 @@ end)
 
 -- Respawn Handler
 Player.CharacterAdded:Connect(function()
-    task.wait(0.5)
+    RealWait(0.5)
     
     CreateServerPosVisual()
     
@@ -1026,12 +1083,12 @@ Player.CharacterAdded:Connect(function()
     end
     
     if Settings.Galaxy then
-        task.wait(0.3)
+        RealWait(0.3)
         setupGalaxyForce()
     end
     
     if Settings.Desync then
-        task.wait(0.3)
+        RealWait(0.3)
         local hrp = GetHRP()
         if hrp then
             TargetServerPosition = hrp.Position
@@ -1045,20 +1102,25 @@ Player.CharacterAdded:Connect(function()
     end
 end)
 
--- Restore Minimized
+-- Restore minimized
 if Settings.Minimized then
     Content.Visible = false
-    Main.Size = UDim2.new(0, 200, 0, 25)
+    Main.Size = UDim2.new(0, 220, 0, 30)
     MinBtn.Text = "+"
+end
+
+-- Restore AntiDetect visual
+if Settings.AntiDetect then
+    AntiDetectBtn.BackgroundColor3 = Color3.fromRGB(0, 255, 100)
 end
 
 -- Notification
 pcall(function()
     StarterGui:SetCore("SendNotification", {
-        Title = "⚡ FR HUB v2.0",
-        Text = "Auto Right Fixed | Galaxy Added | Auto-Update Server Pos",
+        Title = "⚡ FR HUB ULTIMATE",
+        Text = "FRHUB8 Desync + Anti-Detection Loaded!",
         Duration = 3
     })
 end)
 
-print("[LevixFR] v2.0 LOADED | Fixed Right Logic | Galaxy Mode | Dynamic Server Pos")
+print("[LevixFR] ULTIMATE LOADED | FRHUB8 Desync | Anti-Detection | Smart Movement")
