@@ -1,4 +1,4 @@
---[[ FR LITE - Delta Mobile ]]
+--[[ FR LITE - AsLinearVelocity Version ]]
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -81,20 +81,61 @@ local function getHrp()
     return nil
 end
 
+-- AsLinearVelocity - الأفضل للجوال
 local function makeVel()
     local h = getHrp()
     if not h then return end
-    if CurrentVel then CurrentVel:Destroy() end
-    CurrentVel = Instance.new("BodyVelocity")
-    CurrentVel.MaxForce = Vector3.new(999999, 999999, 999999)
-    CurrentVel.Velocity = Vector3.zero
-    CurrentVel.Parent = h
+    
+    -- حذف القديم
+    if CurrentVel then
+        CurrentVel:Destroy()
+        CurrentVel = nil
+    end
+    
+    -- حذف أي LinearVelocity موجود
+    for _, v in pairs(h:GetChildren()) do
+        if v:IsA("LinearVelocity") then
+            v:Destroy()
+        end
+    end
+    
+    -- إنشاء AsLinearVelocity جديد
+    local vel = Instance.new("LinearVelocity")
+    vel.Attachment0 = h:FindFirstChild("RootAttachment") or h:FindFirstChild("Attachment")
+    
+    -- إذا ما فيه Attachment نسوي واحد
+    if not vel.Attachment0 then
+        local att = Instance.new("Attachment")
+        att.Name = "RootAttachment"
+        att.Parent = h
+        vel.Attachment0 = att
+    end
+    
+    vel.VectorVelocity = Vector3.zero
+    vel.MaxForce = math.huge
+    vel.LineDirection = Vector3.new(0, 0, 0)
+    vel.LineVelocity = 0
+    vel.Parent = h
+    
+    CurrentVel = vel
+    return vel
 end
 
 local function delVel()
     if CurrentVel then
         CurrentVel:Destroy()
         CurrentVel = nil
+    end
+end
+
+local function setVel(direction, speed)
+    if not CurrentVel then return end
+    CurrentVel.VectorVelocity = direction * speed
+end
+
+local function stopVel()
+    if CurrentVel then
+        CurrentVel.VectorVelocity = Vector3.zero
     end
 end
 
@@ -188,41 +229,63 @@ bDS.MouseButton1Click:Connect(function()
     end
 end)
 
--- Main Loop
+-- Main Loop - AsLinearVelocity Movement
 RunService.Heartbeat:Connect(function()
     local hrp = getHrp()
     if not hrp then delVel() return end
     
-    if AutoLeft and tick() - LastTime > 0.12 then
+    -- Auto Left - حركة سلسة بـ AsLinearVelocity
+    if AutoLeft and tick() - LastTime > 0.08 then
         AutoIdx = AutoIdx + 1
         if AutoIdx > #LEFT_POINTS then AutoIdx = 1 end
-        local t = LEFT_POINTS[AutoIdx]
-        local d = (t - hrp.Position).Magnitude
-        if d > 30 then
-            hrp.CFrame = CFrame.new(t)
-        elseif CurrentVel then
-            CurrentVel.Velocity = (t - hrp.Position).Unit * Speed
+        
+        local target = LEFT_POINTS[AutoIdx]
+        local distance = (target - hrp.Position).Magnitude
+        
+        if distance > 5 then
+            -- حركة سلسة بـ AsLinearVelocity
+            local direction = (target - hrp.Position).Unit
+            setVel(direction, Speed)
+        else
+            -- وصل للهدف، روح للنقطة الجاية
+            AutoIdx = AutoIdx + 1
+            if AutoIdx > #LEFT_POINTS then AutoIdx = 1 end
+            target = LEFT_POINTS[AutoIdx]
+            local newDir = (target - hrp.Position).Unit
+            setVel(newDir, Speed)
         end
+        
         LastTime = tick()
     end
     
-    if AutoRight and tick() - LastTime > 0.12 then
+    -- Auto Right - حركة سلسة بـ AsLinearVelocity
+    if AutoRight and tick() - LastTime > 0.08 then
         AutoIdx = AutoIdx + 1
         if AutoIdx > #RIGHT_POINTS then AutoIdx = 1 end
-        local t = RIGHT_POINTS[AutoIdx]
-        local d = (t - hrp.Position).Magnitude
-        if d > 30 then
-            hrp.CFrame = CFrame.new(t)
-        elseif CurrentVel then
-            CurrentVel.Velocity = (t - hrp.Position).Unit * Speed
+        
+        local target = RIGHT_POINTS[AutoIdx]
+        local distance = (target - hrp.Position).Magnitude
+        
+        if distance > 5 then
+            local direction = (target - hrp.Position).Unit
+            setVel(direction, Speed)
+        else
+            AutoIdx = AutoIdx + 1
+            if AutoIdx > #RIGHT_POINTS then AutoIdx = 1 end
+            target = RIGHT_POINTS[AutoIdx]
+            local newDir = (target - hrp.Position).Unit
+            setVel(newDir, Speed)
         end
+        
         LastTime = tick()
     end
     
-    if not AutoLeft and not AutoRight and CurrentVel then
-        CurrentVel.Velocity = Vector3.zero
+    -- إيقاف الحركة إذا ما فيه Auto
+    if not AutoLeft and not AutoRight then
+        stopVel()
     end
     
+    -- Desync
     if DesyncKill then
         hrp.CFrame = hrp.CFrame + Vector3.new(math.random(-20, 20), math.random(-5, 5), math.random(-20, 20))
     end
@@ -242,7 +305,7 @@ end)
 pcall(function()
     StarterGui:SetCore("SendNotification", {
         Title = "FR LITE",
-        Text = "Loaded!",
+        Text = "AsLinearVelocity Ready!",
         Duration = 3
     })
 end)
