@@ -1,146 +1,105 @@
--- FR HUB LITE - Desync Kill + Smart Auto Left/Right
+-- FR HUB LITE - Auto Left/Right (Humanoid:Move System)
 
 local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
 local RunService = game:GetService("RunService")
 local StarterGui = game:GetService("StarterGui")
-local Workspace = game:GetService("Workspace")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-if _G.FRHUB_LITE then return end
-_G.FRHUB_LITE = true
+local LocalPlayer = Players.LocalPlayer
+
+if _G.FRHUB_PURE then return end
+_G.FRHUB_PURE = true
 
 -- Settings
 local Settings = {
     AutoLeft = false,
     AutoRight = false,
-    Desync = false,
-    SpeedNormal = 40,
+    SpeedNormal = 35,
     SpeedSteal = 25,
     StopDistance = 2
 }
 
 -- Points
 local LEFT_POINTS = {
-    Vector3.new(-473.43, -7.30, 95.59),   -- 1: بداية
-    Vector3.new(-485.73, -5.15, 95.42),   -- 2: موقع السرقة (يتوقف)
-    Vector3.new(-473.43, -7.30, 95.59),   -- 3: رجوع
-    Vector3.new(-473.96, -7.30, 19.63)    -- 4: نهاية
+    START = Vector3.new(-473.43, -7.30, 95.59),
+    POINT_2 = Vector3.new(-485.73, -5.15, 95.42),
+    POINT_3 = Vector3.new(-473.43, -7.30, 95.59),
+    END = Vector3.new(-473.96, -7.30, 19.63)
 }
 
 local RIGHT_POINTS = {
-    Vector3.new(-474.13, -7.30, 24.17),   -- 1: بداية
-    Vector3.new(-485.17, -5.15, 25.08),   -- 2: موقع السرقة (يتوقف)
-    Vector3.new(-474.13, -7.30, 24.17),   -- 3: رجوع
-    Vector3.new(-474.55, -7.30, 23.52)    -- 4: نهاية
+    START = Vector3.new(-474.13, -7.30, 24.17),
+    POINT_2 = Vector3.new(-485.17, -5.15, 25.08),
+    POINT_3 = Vector3.new(-474.13, -7.30, 24.17),
+    END = Vector3.new(-474.55, -7.30, 23.52)
 }
 
 -- Variables
-local CurrentVel = nil
-local AutoIndex = 1
-local LastAutoTime = 0
-local IsWaitingAtPoint2 = false
-local HasReachedPoint2 = false
-local StealAttempts = 0
+local AutoPhase = "START"
+local CurrentPath = nil
+local WaitingForSteal = false
+local HasBall = false
 
--- Get HRP
+-- Get Character Parts
+local function GetCharacter()
+    return LocalPlayer.Character
+end
+
+local function GetHumanoid()
+    local char = GetCharacter()
+    if char then return char:FindFirstChildOfClass("Humanoid") end
+    return nil
+end
+
 local function GetHRP()
-    local char = LocalPlayer.Character
+    local char = GetCharacter()
     if char then return char:FindFirstChild("HumanoidRootPart") end
     return nil
 end
 
--- Has Ball
-local function HasBall()
-    local char = LocalPlayer.Character
+-- Check if has ball
+local function CheckHasBall()
+    local char = GetCharacter()
     if not char then return false end
-    return char:FindFirstChild("Basketball") ~= nil
+    HasBall = char:FindFirstChild("Basketball") ~= nil
+    return HasBall
 end
 
--- Get Speed
+-- Get current speed
 local function GetSpeed()
-    -- سرعة 25 قبل الموقع 2 وإذا كان في وضع السرقة
-    if AutoIndex == 2 or (AutoIndex == 1 and not HasReachedPoint2) then
-        return Settings.SpeedSteal
-    end
-    return Settings.SpeedNormal
-end
-
--- Create BodyVelocity
-local function CreateVelocity()
-    local hrp = GetHRP()
-    if not hrp then return nil end
-    
-    if CurrentVel then CurrentVel:Destroy() end
-    
-    for _, v in pairs(hrp:GetChildren()) do
-        if v:IsA("BodyVelocity") then v:Destroy() end
-    end
-    
-    local vel = Instance.new("BodyVelocity")
-    vel.MaxForce = Vector3.new(400000, 400000, 400000)
-    vel.Velocity = Vector3.zero
-    vel.P = 10000
-    vel.Parent = hrp
-    
-    CurrentVel = vel
-    return vel
-end
-
-local function RemoveVelocity()
-    if CurrentVel then
-        CurrentVel:Destroy()
-        CurrentVel = nil
-    end
+    return CheckHasBall() and Settings.SpeedSteal or Settings.SpeedNormal
 end
 
 -- Try Steal
 local function TrySteal()
-    local ball = Workspace:FindFirstChild("Basketball")
+    local ball = workspace:FindFirstChild("Basketball")
     if not ball then return false end
     
     local owner = ball:FindFirstChild("Owner")
     if not owner or owner.Value == LocalPlayer then return false end
     
+    -- محاولة سرقة
     for i = 1, 3 do
         pcall(function()
-            ReplicatedStorage.Events.BallEvent:FireServer("Grab", ball)
+            local event = game.ReplicatedStorage:FindFirstChild("Events") and game.ReplicatedStorage.Events:FindFirstChild("BallEvent")
+            if event then
+                event:FireServer("Grab", ball)
+            end
         end)
         task.wait(0.02)
     end
     
-    return HasBall()
-end
-
--- Move with BodyVelocity
-local function MoveToPoint(target)
-    if not CurrentVel then return false end
-    
-    local hrp = GetHRP()
-    if not hrp then return false end
-    
-    local distance = (target - hrp.Position).Magnitude
-    
-    if distance < Settings.StopDistance then
-        CurrentVel.Velocity = Vector3.zero
-        return true -- وصل 100%
-    end
-    
-    local direction = (target - hrp.Position).Unit
-    local speed = GetSpeed()
-    
-    CurrentVel.Velocity = direction * speed
-    return false
+    return CheckHasBall()
 end
 
 -- UI
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "FRHUB_LITE"
-ScreenGui.Parent = game.CoreGui
+ScreenGui.Name = "FRHUB_PURE"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0, 200, 0, 200)
-Main.Position = UDim2.new(0.5, -100, 0.5, -100)
+Main.Size = UDim2.new(0, 200, 0, 180)
+Main.Position = UDim2.new(0.5, -100, 0.5, -90)
 Main.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 Main.BorderSizePixel = 0
 Main.Active = true
@@ -150,7 +109,7 @@ local Corner = Instance.new("UICorner")
 Corner.CornerRadius = UDim.new(0, 8)
 Corner.Parent = Main
 
--- Title
+-- Title Bar
 local TitleBar = Instance.new("Frame")
 TitleBar.Size = UDim2.new(1, 0, 0, 30)
 TitleBar.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
@@ -214,7 +173,7 @@ SC.Parent = Status
 -- Create Button
 local function MakeBtn(txt, y, color)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0.9, 0, 0, 32)
+    btn.Size = UDim2.new(0.9, 0, 0, 35)
     btn.Position = UDim2.new(0.05, 0, 0, y)
     btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
     btn.Text = txt .. ": OFF"
@@ -232,8 +191,8 @@ end
 
 -- Buttons
 local btnLeft, cLeft = MakeBtn("Auto Left", 35, Color3.fromRGB(0, 200, 100))
-local btnRight, cRight = MakeBtn("Auto Right", 72, Color3.fromRGB(0, 150, 255))
-local btnDesync, cDesync = MakeBtn("Desync", 109, Color3.fromRGB(200, 0, 0))
+local btnRight, cRight = MakeBtn("Auto Right", 75, Color3.fromRGB(0, 150, 255))
+local btnDesync, cDesync = MakeBtn("Desync", 115, Color3.fromRGB(200, 0, 0))
 
 -- Dragging
 local dragging, dragStart, startPos
@@ -277,14 +236,12 @@ btnLeft.MouseButton1Click:Connect(function()
         Settings.AutoRight = false
         btnRight.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
         btnRight.Text = "Auto Right: OFF"
-        AutoIndex = 1
-        HasReachedPoint2 = false
-        IsWaitingAtPoint2 = false
-        StealAttempts = 0
-        CreateVelocity()
-        Status.Text = "Left: Moving to Point 1"
+        AutoPhase = "START"
+        CurrentPath = "LEFT"
+        WaitingForSteal = false
+        Status.Text = "Left: To Point 1"
     else
-        RemoveVelocity()
+        CurrentPath = nil
         Status.Text = "Ready"
     end
 end)
@@ -295,31 +252,25 @@ btnRight.MouseButton1Click:Connect(function()
         Settings.AutoLeft = false
         btnLeft.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
         btnLeft.Text = "Auto Left: OFF"
-        AutoIndex = 1
-        HasReachedPoint2 = false
-        IsWaitingAtPoint2 = false
-        StealAttempts = 0
-        CreateVelocity()
-        Status.Text = "Right: Moving to Point 1"
+        AutoPhase = "START"
+        CurrentPath = "RIGHT"
+        WaitingForSteal = false
+        Status.Text = "Right: To Point 1"
     else
-        RemoveVelocity()
+        CurrentPath = nil
         Status.Text = "Ready"
     end
 end)
 
 btnDesync.MouseButton1Click:Connect(function()
     local on = Toggle(btnDesync, "Desync", "Desync", cDesync)
-    if on then
-        Status.Text = "Desync: KILL MODE"
-    else
-        Status.Text = "Ready"
-    end
+    Status.Text = on and "Desync: KILL MODE" or "Ready"
 end)
 
 -- Minimize/Close
 MinBtn.MouseButton1Click:Connect(function()
     Content.Visible = not Content.Visible
-    Main.Size = Content.Visible and UDim2.new(0, 200, 0, 200) or UDim2.new(0, 200, 0, 30)
+    Main.Size = Content.Visible and UDim2.new(0, 200, 0, 180) or UDim2.new(0, 200, 0, 30)
     MinBtn.Text = Content.Visible and "-" or "+"
 end)
 
@@ -328,18 +279,17 @@ CloseBtn.MouseButton1Click:Connect(function()
     Settings.AutoLeft = false
     Settings.AutoRight = false
     Settings.Desync = false
-    RemoveVelocity()
+    CurrentPath = nil
 end)
 
--- Main Loop
+-- ==================== MAIN LOOP (Humanoid:Move System) ====================
+
 RunService.Heartbeat:Connect(function()
     local hrp = GetHRP()
-    if not hrp then 
-        RemoveVelocity()
-        return 
-    end
+    local hum = GetHumanoid()
+    if not hrp or not hum then return end
     
-    -- Desync Kill (نظام FR HUB الأصلي - تيليبورت عشوائي)
+    -- Desync Kill (نظام FR HUB الأصلي)
     if Settings.Desync then
         hrp.CFrame = hrp.CFrame + Vector3.new(
             math.random(-20, 20),
@@ -348,119 +298,102 @@ RunService.Heartbeat:Connect(function()
         )
     end
     
-    -- Auto Left - Smart System with Point 2 Stop
-    if Settings.AutoLeft and CurrentVel then
-        local target = LEFT_POINTS[AutoIndex]
+    -- Auto Left/Right System (مثل VelocityUltraV8)
+    if not CurrentPath then return end
+    
+    local points = CurrentPath == "LEFT" and LEFT_POINTS or RIGHT_POINTS
+    
+    -- إذا كان ينتظر في الموقع 2
+    if WaitingForSteal then
+        hum:Move(Vector3.zero, false)
         
-        -- الموقع 2 (موقع السرقة)
-        if AutoIndex == 2 then
-            if not HasReachedPoint2 then
-                -- يتحرك للموقع 2 بسرعة 25
-                Status.Text = "Left: To Point 2 (Steal) - " .. Settings.SpeedSteal
-                local reached = MoveToPoint(target)
-                
-                if reached then
-                    HasReachedPoint2 = true
-                    IsWaitingAtPoint2 = true
-                    CurrentVel.Velocity = Vector3.zero
-                    StealAttempts = 0
-                    Status.Text = "Left: AT Point 2 - Stealing..."
-                end
-                
-            else
-                -- وصل الموقع 2، يحاول يسرق
-                StealAttempts = StealAttempts + 1
-                Status.Text = "Left: Stealing... (" .. StealAttempts .. ")"
-                
-                local stolen = TrySteal()
-                
-                -- إذا سرق أو حاول كثير، يكمل
-                if stolen or StealAttempts > 20 then
-                    IsWaitingAtPoint2 = false
-                    AutoIndex = 3 -- يروح للموقع 3
-                    Status.Text = "Left: Got ball! Continue..."
-                    task.wait(0.2)
-                end
-            end
-            
+        -- يحاول يسرق
+        local stolen = TrySteal()
+        
+        if stolen or CheckHasBall() then
+            WaitingForSteal = false
+            AutoPhase = "POINT_3"
+            Status.Text = CurrentPath .. ": Got ball! Continue..."
         else
-            -- المواقع 1, 3, 4 (عادية)
-            local speed = GetSpeed()
-            Status.Text = "Left: To Point " .. AutoIndex .. " - " .. speed
+            Status.Text = CurrentPath .. ": Stealing at Point 2..."
+        end
+        
+        return
+    end
+    
+    -- تحديد الهدف الحالي
+    local currentPoint = points[AutoPhase]
+    if not currentPoint then
+        AutoPhase = "START"
+        currentPoint = points.START
+    end
+    
+    -- حساب المسافة
+    local targetPos = Vector3.new(currentPoint.X, hrp.Position.Y, currentPoint.Z)
+    local distance = (targetPos - hrp.Position).Magnitude
+    
+    -- التحقق من الوصول
+    if distance < Settings.StopDistance then
+        -- وصل للهدف
+        if AutoPhase == "START" then
+            AutoPhase = "POINT_2"
+            Status.Text = CurrentPath .. ": To Point 2 (Steal)"
             
-            local reached = MoveToPoint(target)
+        elseif AutoPhase == "POINT_2" then
+            -- وصل الموقع 2 - يتوقف ويحاول يسرق
+            WaitingForSteal = true
+            hum:Move(Vector3.zero, false)
+            Status.Text = CurrentPath .. ": At Point 2 - Stealing..."
+            return
             
-            if reached then
-                -- وصل 100%، يروح للموقع الجاي
-                AutoIndex = AutoIndex + 1
-                if AutoIndex > #LEFT_POINTS then
-                    AutoIndex = 1
-                    HasReachedPoint2 = false -- إعادة الدورة
-                end
-                LastAutoTime = tick()
-            end
+        elseif AutoPhase == "POINT_3" then
+            AutoPhase = "END"
+            Status.Text = CurrentPath .. ": To End"
+            
+        elseif AutoPhase == "END" then
+            -- إعادة الدورة
+            AutoPhase = "START"
+            Status.Text = CurrentPath .. ": Loop - To Point 1"
+            return
         end
     end
     
-    -- Auto Right - Smart System with Point 2 Stop (نفس المنطق)
-    if Settings.AutoRight and CurrentVel then
-        local target = RIGHT_POINTS[AutoIndex]
-        
-        if AutoIndex == 2 then
-            if not HasReachedPoint2 then
-                Status.Text = "Right: To Point 2 (Steal) - " .. Settings.SpeedSteal
-                local reached = MoveToPoint(target)
-                
-                if reached then
-                    HasReachedPoint2 = true
-                    IsWaitingAtPoint2 = true
-                    CurrentVel.Velocity = Vector3.zero
-                    StealAttempts = 0
-                    Status.Text = "Right: AT Point 2 - Stealing..."
-                end
-                
-            else
-                StealAttempts = StealAttempts + 1
-                Status.Text = "Right: Stealing... (" .. StealAttempts .. ")"
-                
-                local stolen = TrySteal()
-                
-                if stolen or StealAttempts > 20 then
-                    IsWaitingAtPoint2 = false
-                    AutoIndex = 3
-                    Status.Text = "Right: Got ball! Continue..."
-                    task.wait(0.2)
-                end
-            end
-            
-        else
-            local speed = GetSpeed()
-            Status.Text = "Right: To Point " .. AutoIndex .. " - " .. speed
-            
-            local reached = MoveToPoint(target)
-            
-            if reached then
-                AutoIndex = AutoIndex + 1
-                if AutoIndex > #RIGHT_POINTS then
-                    AutoIndex = 1
-                    HasReachedPoint2 = false
-                end
-                LastAutoTime = tick()
-            end
-        end
-    end
+    -- التحرك للهدف (نظام Humanoid:Move)
+    local direction = (targetPos - hrp.Position).Unit
+    direction = Vector3.new(direction.X, 0, direction.Z).Unit
     
-    -- Stop velocity if not active
-    if not Settings.AutoLeft and not Settings.AutoRight and CurrentVel then
-        CurrentVel.Velocity = Vector3.zero
+    local speed = GetSpeed()
+    
+    -- تحريك اللاعب (مثل VelocityUltraV8)
+    hum:Move(direction, false)
+    
+    -- تطبيق السرعة على Velocity
+    hrp.AssemblyLinearVelocity = Vector3.new(
+        direction.X * speed,
+        hrp.AssemblyLinearVelocity.Y,
+        direction.Z * speed
+    )
+    
+    -- تحديث الحالة
+    if AutoPhase ~= "POINT_2" or not WaitingForSteal then
+        local phaseName = AutoPhase == "START" and "1" or 
+                         AutoPhase == "POINT_2" and "2 (Steal)" or
+                         AutoPhase == "POINT_3" and "3" or "4"
+        Status.Text = CurrentPath .. ": To Point " .. phaseName .. " - " .. speed
     end
 end)
 
 -- Respawn
 LocalPlayer.CharacterAdded:Connect(function()
     task.wait(0.5)
-    if Settings.AutoLeft or Settings.AutoRight then
-        CreateVelocity()
+    if Settings.AutoLeft then
+        CurrentPath = "LEFT"
+        AutoPhase = "START"
+        WaitingForSteal = false
+    elseif Settings.AutoRight then
+        CurrentPath = "RIGHT"
+        AutoPhase = "START"
+        WaitingForSteal = false
     end
 end)
 
@@ -468,7 +401,7 @@ end)
 pcall(function()
     StarterGui:SetCore("SendNotification", {
         Title = "FR HUB LITE",
-        Text = "Desync Kill + Smart Auto Ready!",
+        Text = "Humanoid:Move System Ready!",
         Duration = 3
     })
 end)
