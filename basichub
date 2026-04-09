@@ -31,7 +31,7 @@ local ScriptSettings = {
     AutoLeft = false,
     AutoRight = false,
     InstaSteal = false,
-    SpeedNormal = 40,
+    SpeedNormal = 35,
     SpeedSteal = 25
 }
 
