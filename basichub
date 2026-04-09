@@ -1,981 +1,1018 @@
--- FR HUB LITE - Fixed Buttons + Integrated Settings (100% Fixed)
+-- LEVIX FR HUB - Merged Edition (Auto Left/Right + Desync + Insta Steal)
+-- Systems: Levix Hub Movement + FR HUB Desync/Steal + Enhanced UI
+-- Status: 100% Fixed & Optimized
 
 local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local StarterGui = game:GetService("StarterGui")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
 
-local function Notify(title, text, duration)
-    pcall(function()
-        StarterGui:SetCore("SendNotification", {
-            Title = title,
-            Text = text,
-            Duration = duration or 3
-        })
-    end)
+local Player = Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
+
+--// ==================== [0] Anti-Error Protection ====================
+local function SafeCall(func, ...)
+    local success, result = pcall(func, ...)
+    if not success then
+        warn("[LevixFR] Error:", result)
+    end
+    return success, result
 end
 
-if _G.FRHUB_FIXED then return end
-_G.FRHUB_FIXED = true
-
--- Settings
+--// ==================== [1] Settings & Variables ====================
 local Settings = {
     AutoLeft = false,
     AutoRight = false,
     Desync = false,
     InstaSteal = false,
-    SpeedNormal = 40,
-    SpeedSteal = 15,
-    SettingsVisible = false
+    SpeedNormal = 53,
+    SpeedSteal = 29,
+    MaxSpeed = 50,
+    GalaxyGravity = 40,
+    DefaultGravity = 196.2,
+    UIVisible = true,
+    Minimized = false
 }
 
--- Points
+-- Load saved settings
+pcall(function()
+    if isfile("LevixFR_Config.json") then
+        local saved = HttpService:JSONDecode(readfile("LevixFR_Config.json"))
+        for k, v in pairs(saved) do
+            if Settings[k] ~= nil then Settings[k] = v end
+        end
+    end
+end)
+
+local function SaveSettings()
+    pcall(function()
+        writefile("LevixFR_Config.json", HttpService:JSONEncode(Settings))
+    end)
+end
+
+--// ==================== [2] Path Points (Levix System) ====================
 local LEFT_POINTS = {
     START = Vector3.new(-473.43, -7.30, 95.59),
     POINT_2 = Vector3.new(-485.73, -5.15, 95.42),
     POINT_3 = Vector3.new(-473.43, -7.30, 95.59),
-    END = Vector3.new(-473.96, -7.30, 19.63)
+    END = Vector3.new(-473.96, -7.30, 19.63),
 }
 
 local RIGHT_POINTS = {
     START = Vector3.new(-474.13, -7.30, 24.17),
     POINT_2 = Vector3.new(-485.17, -5.15, 25.08),
     POINT_3 = Vector3.new(-474.13, -7.30, 24.17),
-    END = Vector3.new(-474.55, -7.30, 23.52)
+    END = Vector3.new(-474.55, -7.30, 23.52),
 }
 
--- Variables
-local CurrentVel = nil
-local AutoPhase = "START"
-local CurrentPath = nil
-local WaitingForSteal = false
-local AutoConnection = nil
-local DesyncConnection = nil
-local TargetServerPos = nil
-local isInstaStealActive = false
+--// ==================== [3] State Variables ====================
+local Connections = {}
+local autoPhase = "START"
+local currentPath = nil
+local waitingForSteal = false
+local isInstaGrabActive = false
+local DesyncEnabled = false
+local TargetServerPosition = nil
+local galaxyVectorForce = nil
+local galaxyAttachment = nil
+local lastHopTime = 0
+local originalJumpPower = 50
+local spaceHeld = false
 
--- Get Parts
+--// ==================== [4] Character Functions ====================
+local function GetCharacter()
+    return Player.Character
+end
+
 local function GetHRP()
-    local char = LocalPlayer.Character
-    if char then return char:FindFirstChild("HumanoidRootPart") end
-    return nil
+    local char = GetCharacter()
+    return char and char:FindFirstChild("HumanoidRootPart")
 end
 
 local function GetHumanoid()
-    local char = LocalPlayer.Character
-    if char then return char:FindFirstChildOfClass("Humanoid") end
-    return nil
+    local char = GetCharacter()
+    return char and char:FindFirstChildOfClass("Humanoid")
 end
 
 local function HasBall()
-    local char = LocalPlayer.Character
-    if not char then return false end
-    return char:FindFirstChild("Basketball") ~= nil
+    local char = GetCharacter()
+    return char and char:FindFirstChild("Basketball") ~= nil
 end
 
--- Create Velocity
-local function CreateVelocity()
-    local hrp = GetHRP()
-    if not hrp then return nil end
-
-    if CurrentVel then CurrentVel:Destroy() end
-
-    for _, v in pairs(hrp:GetChildren()) do
-        if v:IsA("BodyVelocity") then v:Destroy() end
-    end
-
-    local vel = Instance.new("BodyVelocity")
-    vel.MaxForce = Vector3.new(400000, 400000, 400000)
-    vel.Velocity = Vector3.zero
-    vel.P = 10000
-    vel.Parent = hrp
-
-    CurrentVel = vel
-    return vel
+local function IsStealing()
+    return Player:GetAttribute("Stealing") == true
 end
 
-local function RemoveVelocity()
-    if CurrentVel then
-        CurrentVel:Destroy()
-        CurrentVel = nil
-    end
+--// ==================== [5] Galaxy/Anti-Ragdoll System ====================
+local function SetupGalaxyForce()
+    SafeCall(function()
+        local hrp = GetHRP()
+        if not hrp then return end
+
+        if galaxyVectorForce then galaxyVectorForce:Destroy() end
+        if galaxyAttachment then galaxyAttachment:Destroy() end
+
+        galaxyAttachment = Instance.new("Attachment")
+        galaxyAttachment.Parent = hrp
+
+        galaxyVectorForce = Instance.new("VectorForce")
+        galaxyVectorForce.Attachment0 = galaxyAttachment
+        galaxyVectorForce.ApplyAtCenterOfMass = true
+        galaxyVectorForce.RelativeTo = Enum.ActuatorRelativeTo.World
+        galaxyVectorForce.Force = Vector3.new(0, 0, 0)
+        galaxyVectorForce.Parent = hrp
+    end)
 end
 
--- Try Steal
-local function TrySteal()
-    local ball = Workspace:FindFirstChild("Basketball")
-    if not ball then return false end
+local function UpdateGalaxyForce()
+    if not galaxyVectorForce then return end
+    SafeCall(function()
+        local char = GetCharacter()
+        if not char then return end
 
-    local owner = ball:FindFirstChild("Owner")
-    if not owner or owner.Value == LocalPlayer then return false end
+        local mass = 0
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") then mass = mass + p:GetMass() end
+        end
 
-    for i = 1, 3 do
-        pcall(function()
-            if ReplicatedStorage:FindFirstChild("Events") and ReplicatedStorage.Events:FindFirstChild("BallEvent") then
-                ReplicatedStorage.Events.BallEvent:FireServer("Grab", ball)
+        local tg = Settings.DefaultGravity * (Settings.GalaxyGravity / 100)
+        galaxyVectorForce.Force = Vector3.new(0, mass * (Settings.DefaultGravity - tg) * 0.95, 0)
+    end)
+end
+
+local function DoMiniHop()
+    SafeCall(function()
+        local hrp = GetHRP()
+        local hum = GetHumanoid()
+        if not hrp or not hum then return end
+
+        if tick() - lastHopTime < 0.08 then return end
+        lastHopTime = tick()
+
+        if hum.FloorMaterial == Enum.Material.Air then
+            hrp.AssemblyLinearVelocity = Vector3.new(
+                hrp.AssemblyLinearVelocity.X, 35, hrp.AssemblyLinearVelocity.Z
+            )
+        end
+    end)
+end
+
+--// ==================== [6] Auto Movement System (FIXED) ====================
+local function StartAutoSystem()
+    if Connections.Movement then return end
+
+    print("[LevixFR] Auto System Started")
+
+    Connections.Movement = RunService.Heartbeat:Connect(function()
+        if not Settings.AutoLeft and not Settings.AutoRight then return end
+
+        SafeCall(function()
+            local hrp = GetHRP()
+            local hum = GetHumanoid()
+            if not hrp or not hum then return end
+
+            local points = Settings.AutoLeft and LEFT_POINTS or RIGHT_POINTS
+            currentPath = Settings.AutoLeft and "LEFT" or "RIGHT"
+
+            -- Handle waiting for steal
+            if waitingForSteal then
+                if IsStealing() or HasBall() then
+                    waitingForSteal = false
+                    autoPhase = "POINT_3"
+                    print("[LevixFR] Steal successful, continuing to POINT_3")
+                else
+                    hum:Move(Vector3.zero, false)
+                    hrp.AssemblyLinearVelocity = Vector3.new(0, hrp.AssemblyLinearVelocity.Y, 0)
+                    return
+                end
             end
-        end)
-        task.wait(0.02)
-    end
 
-    return HasBall()
+            -- Get current target point
+            local currentPoint = points[autoPhase]
+            if not currentPoint then
+                autoPhase = "START"
+                currentPoint = points.START
+            end
+
+            local targetPos = Vector3.new(currentPoint.X, hrp.Position.Y, currentPoint.Z)
+            local dist = (targetPos - hrp.Position).Magnitude
+
+            -- Phase transition logic - FIXED
+            if dist < 2 then
+                if autoPhase == "START" then
+                    autoPhase = "POINT_2"
+                    print("[LevixFR] Reached START -> POINT_2")
+
+                elseif autoPhase == "POINT_2" then
+                    waitingForSteal = true
+                    hum:Move(Vector3.zero, false)
+                    print("[LevixFR] At POINT_2, waiting for steal...")
+                    return
+
+                elseif autoPhase == "POINT_3" then
+                    autoPhase = "END"
+                    print("[LevixFR] Reached POINT_3 -> END")
+
+                elseif autoPhase == "END" then
+                    autoPhase = "START"
+                    waitingForSteal = false
+                    print("[LevixFR] Loop complete, restarting")
+                    return
+                end
+            end
+
+            -- Calculate movement
+            local isStealing = IsStealing()
+            local speed = isStealing and Settings.SpeedSteal or Settings.SpeedNormal
+
+            -- Ensure minimum speed
+            if speed < Settings.MaxSpeed and not isStealing then
+                speed = Settings.MaxSpeed
+            end
+
+            local dir = (targetPos - hrp.Position).Unit
+            dir = Vector3.new(dir.X, 0, dir.Z).Unit
+
+            -- Apply velocity with micro-jitter for anti-cheat
+            local jitter = Vector3.new(
+                math.random(-5, 5) * 0.01,
+                0,
+                math.random(-5, 5) * 0.01
+            )
+
+            local velocity = dir * speed
+            hrp.AssemblyLinearVelocity = Vector3.new(
+                velocity.X + jitter.X,
+                hrp.AssemblyLinearVelocity.Y,
+                velocity.Z + jitter.Z
+            )
+
+            hum:Move(dir, false)
+        end)
+    end)
 end
 
--- Insta Steal System
+local function StopAutoSystem()
+    if Connections.Movement then
+        Connections.Movement:Disconnect()
+        Connections.Movement = nil
+    end
+
+    autoPhase = "START"
+    waitingForSteal = false
+    currentPath = nil
+
+    SafeCall(function()
+        local hum = GetHumanoid()
+        if hum then hum:Move(Vector3.zero, false) end
+    end)
+
+    print("[LevixFR] Auto System Stopped")
+end
+
+--// ==================== [7] Insta Steal System (FR HUB) ====================
 local function StartInstaStealSystem()
     task.spawn(function()
         while task.wait(0.1) do
-            if not isInstaStealActive then continue end
+            if not isInstaGrabActive then continue end
 
-            local plots = Workspace:FindFirstChild("Plots")
-            if plots then
-                for _, plot in pairs(plots:GetChildren()) do
-                    local podiums = plot:FindFirstChild("AnimalPodiums")
-                    if podiums then
-                        for _, podium in pairs(podiums:GetChildren()) do
-                            local base = podium:FindFirstChild("Base")
-                            local spawn = base and base:FindFirstChild("Spawn")
-                            local att = spawn and spawn:FindFirstChild("PromptAttachment")
+            SafeCall(function()
+                -- Fast grab prompts
+                local plots = Workspace:FindFirstChild("Plots")
+                if plots then
+                    for _, plot in pairs(plots:GetChildren()) do
+                        local podiums = plot:FindFirstChild("AnimalPodiums")
+                        if podiums then
+                            for _, podium in pairs(podiums:GetChildren()) do
+                                local base = podium:FindFirstChild("Base")
+                                local spawn = base and base:FindFirstChild("Spawn")
+                                local att = spawn and spawn:FindFirstChild("PromptAttachment")
 
-                            if att then
-                                for _, prompt in pairs(att:GetChildren()) do
-                                    if prompt:IsA("ProximityPrompt") then
-                                        prompt.HoldDuration = 0.03
+                                if att then
+                                    for _, prompt in pairs(att:GetChildren()) do
+                                        if prompt:IsA("ProximityPrompt") then
+                                            prompt.HoldDuration = 0.03
+                                        end
                                     end
                                 end
                             end
                         end
                     end
                 end
-            end
 
-            local ball = Workspace:FindFirstChild("Basketball")
-            if ball then
-                local owner = ball:FindFirstChild("Owner")
-                if owner and owner.Value ~= LocalPlayer then
-                    pcall(function()
-                        if ReplicatedStorage:FindFirstChild("Events") and ReplicatedStorage.Events:FindFirstChild("BallEvent") then
+                -- Auto grab ball
+                local ball = Workspace:FindFirstChild("Basketball")
+                if ball then
+                    local owner = ball:FindFirstChild("Owner")
+                    if owner and owner.Value ~= Player then
+                        if ReplicatedStorage:FindFirstChild("Events") and 
+                           ReplicatedStorage.Events:FindFirstChild("BallEvent") then
                             ReplicatedStorage.Events.BallEvent:FireServer("Grab", ball)
                         end
-                    end)
-                end
-            end
-        end
-    end)
-end
-
--- Desync
-local function SendFakePosition(pos)
-    local cf = CFrame.new(pos)
-    if typeof(rnet) == "table" then
-        pcall(function()
-            if rnet.sendposition then rnet.sendposition(pos) end
-            if rnet.sendphysics then rnet.sendphysics(cf) end
-        end)
-    end
-    if typeof(delta) == "table" then
-        pcall(function()
-            if delta.sendposition then delta.sendposition(pos) end
-            if delta.sendphysics then delta.sendphysics(cf) end
-        end)
-    end
-end
-
--- ==================== FIXED UI ====================
-
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "FRHUB_FIXED"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-
--- Main Container (holds both Main Frame and Settings)
-local MainContainer = Instance.new("Frame")
-MainContainer.Name = "MainContainer"
-MainContainer.Size = UDim2.new(0, 400, 0, 280)
-MainContainer.Position = UDim2.new(0.5, -200, 0.5, -140)
-MainContainer.BackgroundTransparency = 1
-MainContainer.BorderSizePixel = 0
-MainContainer.Active = true
-MainContainer.ClipsDescendants = false
-MainContainer.Parent = ScreenGui
-
--- Main Frame (Left side - Original UI)
-local Main = Instance.new("Frame")
-Main.Name = "Main"
-Main.Size = UDim2.new(0, 240, 0, 280)
-Main.Position = UDim2.new(0, 0, 0, 0)
-Main.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
-Main.BorderSizePixel = 0
-Main.Active = true
-Main.ClipsDescendants = true
-Main.Parent = MainContainer
-
--- Gradient Background - FIXED: Don't tween Color property
-local UIGradient = Instance.new("UIGradient")
-UIGradient.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 25, 40)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(15, 15, 25))
-})
-UIGradient.Rotation = 45
-UIGradient.Parent = Main
-
--- Corner
-local Corner = Instance.new("UICorner")
-Corner.CornerRadius = UDim.new(0, 16)
-Corner.Parent = Main
-
--- Glow Effect
-local Glow = Instance.new("ImageLabel")
-Glow.Name = "Glow"
-Glow.Size = UDim2.new(1, 40, 1, 40)
-Glow.Position = UDim2.new(0, -20, 0, -20)
-Glow.BackgroundTransparency = 1
-Glow.Image = "rbxassetid://5554236805"
-Glow.ImageColor3 = Color3.fromRGB(100, 100, 255)
-Glow.ImageTransparency = 0.85
-Glow.ScaleType = Enum.ScaleType.Slice
-Glow.SliceCenter = Rect.new(23, 23, 277, 277)
-Glow.ZIndex = 0
-Glow.Parent = Main
-
--- Animated Border
-local Border = Instance.new("UIStroke")
-Border.Thickness = 2
-Border.Color = Color3.fromRGB(100, 100, 255)
-Border.Transparency = 0.3
-Border.Parent = Main
-
-task.spawn(function()
-    local t = 0
-    while Main.Parent do
-        t += 0.05
-        Border.Color = Color3.fromHSV((tick() * 0.1) % 1, 0.6, 1)
-        Border.Transparency = 0.3 + math.sin(t) * 0.2
-        task.wait(0.1)
-    end
-end)
-
--- Title Bar
-local TitleBar = Instance.new("Frame")
-TitleBar.Name = "TitleBar"
-TitleBar.Size = UDim2.new(1, 0, 0, 40)
-TitleBar.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
-TitleBar.BackgroundTransparency = 0.5
-TitleBar.BorderSizePixel = 0
-TitleBar.Parent = Main
-
-local TitleCorner = Instance.new("UICorner")
-TitleCorner.CornerRadius = UDim.new(0, 16)
-TitleCorner.Parent = TitleBar
-
--- Title
-local Title = Instance.new("TextLabel")
-Title.Name = "Title"
-Title.Size = UDim2.new(1, -100, 1, 0)
-Title.Position = UDim2.new(0, 15, 0, 0)
-Title.BackgroundTransparency = 1
-Title.Text = "⚡ FR HUB LITE"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.TextSize = 16
-Title.Font = Enum.Font.GothamBlack
-Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = TitleBar
-
--- Settings Button (⚙️)
-local SettingsBtn = Instance.new("TextButton")
-SettingsBtn.Name = "SettingsBtn"
-SettingsBtn.Size = UDim2.new(0, 32, 0, 32)
-SettingsBtn.Position = UDim2.new(1, -68, 0.5, -16)
-SettingsBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-SettingsBtn.Text = "⚙️"
-SettingsBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-SettingsBtn.TextSize = 18
-SettingsBtn.Font = Enum.Font.SourceSansBold
-SettingsBtn.Parent = TitleBar
-
-local SettingsBtnCorner = Instance.new("UICorner")
-SettingsBtnCorner.CornerRadius = UDim.new(0, 8)
-SettingsBtnCorner.Parent = SettingsBtn
-
--- Minimize
-local MinBtn = Instance.new("TextButton")
-MinBtn.Name = "MinBtn"
-MinBtn.Size = UDim2.new(0, 32, 0, 32)
-MinBtn.Position = UDim2.new(1, -36, 0.5, -16)
-MinBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-MinBtn.Text = "−"
-MinBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-MinBtn.TextSize = 20
-MinBtn.Font = Enum.Font.GothamBold
-MinBtn.Parent = TitleBar
-
-local MinBtnCorner = Instance.new("UICorner")
-MinBtnCorner.CornerRadius = UDim.new(0, 8)
-MinBtnCorner.Parent = MinBtn
-
--- Content Frame
-local Content = Instance.new("Frame")
-Content.Name = "Content"
-Content.Size = UDim2.new(1, -20, 1, -50)
-Content.Position = UDim2.new(0, 10, 0, 45)
-Content.BackgroundTransparency = 1
-Content.Parent = Main
-
--- Status Label
-local Status = Instance.new("TextLabel")
-Status.Name = "Status"
-Status.Size = UDim2.new(1, 0, 0, 28)
-Status.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
-Status.BackgroundTransparency = 0.3
-Status.Text = "✨ Ready | Normal: 40 | Steal: 15"
-Status.TextColor3 = Color3.fromRGB(100, 255, 150)
-Status.TextSize = 11
-Status.Font = Enum.Font.GothamBold
-Status.Parent = Content
-
-local StatusCorner = Instance.new("UICorner")
-StatusCorner.CornerRadius = UDim.new(0, 8)
-StatusCorner.Parent = Status
-
--- Buttons Container
-local ButtonsContainer = Instance.new("Frame")
-ButtonsContainer.Name = "ButtonsContainer"
-ButtonsContainer.Size = UDim2.new(1, 0, 1, -40)
-ButtonsContainer.Position = UDim2.new(0, 0, 0, 40)
-ButtonsContainer.BackgroundTransparency = 1
-ButtonsContainer.Parent = Content
-
--- ==================== SETTINGS PANEL (RIGHT SIDE - CHILD OF MAIN CONTAINER) ====================
-
-local SettingsPanel = Instance.new("Frame")
-SettingsPanel.Name = "SettingsPanel"
-SettingsPanel.Size = UDim2.new(0, 150, 0, 200)
-SettingsPanel.Position = UDim2.new(0, 245, 0, 40)
-SettingsPanel.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
-SettingsPanel.BackgroundTransparency = 0.1
-SettingsPanel.BorderSizePixel = 0
-SettingsPanel.Visible = false
-SettingsPanel.ClipsDescendants = true
-SettingsPanel.Parent = MainContainer
-
-local SettingsPanelCorner = Instance.new("UICorner")
-SettingsPanelCorner.CornerRadius = UDim.new(0, 12)
-SettingsPanelCorner.Parent = SettingsPanel
-
--- Settings Border
-local SettingsBorder = Instance.new("UIStroke")
-SettingsBorder.Thickness = 2
-SettingsBorder.Color = Color3.fromRGB(100, 100, 255)
-SettingsBorder.Transparency = 0.3
-SettingsBorder.Parent = SettingsPanel
-
--- Settings Title
-local SettingsTitle = Instance.new("TextLabel")
-SettingsTitle.Name = "SettingsTitle"
-SettingsTitle.Size = UDim2.new(1, 0, 0, 30)
-SettingsTitle.BackgroundTransparency = 1
-SettingsTitle.Text = "⚡ Speed Settings"
-SettingsTitle.TextColor3 = Color3.fromRGB(255, 200, 100)
-SettingsTitle.TextSize = 13
-SettingsTitle.Font = Enum.Font.GothamBold
-SettingsTitle.Parent = SettingsPanel
-
--- Normal Speed Label
-local NormalLabel = Instance.new("TextLabel")
-NormalLabel.Name = "NormalLabel"
-NormalLabel.Size = UDim2.new(1, -20, 0, 20)
-NormalLabel.Position = UDim2.new(0, 10, 0, 35)
-NormalLabel.BackgroundTransparency = 1
-NormalLabel.Text = "Normal Speed:"
-NormalLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-NormalLabel.TextSize = 11
-NormalLabel.Font = Enum.Font.Gotham
-NormalLabel.TextXAlignment = Enum.TextXAlignment.Left
-NormalLabel.Parent = SettingsPanel
-
--- Normal Speed TextBox
-local NormalBox = Instance.new("TextBox")
-NormalBox.Name = "NormalBox"
-NormalBox.Size = UDim2.new(1, -20, 0, 28)
-NormalBox.Position = UDim2.new(0, 10, 0, 55)
-NormalBox.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
-NormalBox.Text = tostring(Settings.SpeedNormal)
-NormalBox.TextColor3 = Color3.fromRGB(100, 255, 150)
-NormalBox.TextSize = 12
-NormalBox.Font = Enum.Font.GothamBold
-NormalBox.ClearTextOnFocus = false
-NormalBox.Parent = SettingsPanel
-
-local NormalBoxCorner = Instance.new("UICorner")
-NormalBoxCorner.CornerRadius = UDim.new(0, 6)
-NormalBoxCorner.Parent = NormalBox
-
--- Steal Speed Label
-local StealLabel = Instance.new("TextLabel")
-StealLabel.Name = "StealLabel"
-StealLabel.Size = UDim2.new(1, -20, 0, 20)
-StealLabel.Position = UDim2.new(0, 10, 0, 90)
-StealLabel.BackgroundTransparency = 1
-StealLabel.Text = "Steal Speed:"
-StealLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-StealLabel.TextSize = 11
-StealLabel.Font = Enum.Font.Gotham
-StealLabel.TextXAlignment = Enum.TextXAlignment.Left
-StealLabel.Parent = SettingsPanel
-
--- Steal Speed TextBox
-local StealBox = Instance.new("TextBox")
-StealBox.Name = "StealBox"
-StealBox.Size = UDim2.new(1, -20, 0, 28)
-StealBox.Position = UDim2.new(0, 10, 0, 110)
-StealBox.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
-StealBox.Text = tostring(Settings.SpeedSteal)
-StealBox.TextColor3 = Color3.fromRGB(255, 150, 100)
-StealBox.TextSize = 12
-StealBox.Font = Enum.Font.GothamBold
-StealBox.ClearTextOnFocus = false
-StealBox.Parent = SettingsPanel
-
-local StealBoxCorner = Instance.new("UICorner")
-StealBoxCorner.CornerRadius = UDim.new(0, 6)
-StealBoxCorner.Parent = StealBox
-
--- Info Label
-local InfoLabel = Instance.new("TextLabel")
-InfoLabel.Name = "InfoLabel"
-InfoLabel.Size = UDim2.new(1, -20, 0, 40)
-InfoLabel.Position = UDim2.new(0, 10, 0, 150)
-InfoLabel.BackgroundTransparency = 1
-InfoLabel.Text = "Press Enter to save values (1-100)"
-InfoLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-InfoLabel.TextSize = 10
-InfoLabel.Font = Enum.Font.Gotham
-InfoLabel.TextWrapped = true
-InfoLabel.TextXAlignment = Enum.TextXAlignment.Left
-InfoLabel.Parent = SettingsPanel
-
--- Update Status Function
-local function UpdateStatus()
-    Status.Text = string.format("✨ %s | N:%d | S:%d", 
-        Settings.AutoLeft and "Left" or Settings.AutoRight and "Right" or "Ready",
-        Settings.SpeedNormal,
-        Settings.SpeedSteal
-    )
-end
-
--- TextBox Events - Fixed
-NormalBox.FocusLost:Connect(function(enterPressed)
-    local num = tonumber(NormalBox.Text)
-    if num and num > 0 and num <= 100 then
-        Settings.SpeedNormal = num
-        UpdateStatus()
-
-        TweenService:Create(NormalBox, TweenInfo.new(0.2), {
-            BackgroundColor3 = Color3.fromRGB(60, 80, 60)
-        }):Play()
-        task.wait(0.2)
-        TweenService:Create(NormalBox, TweenInfo.new(0.2), {
-            BackgroundColor3 = Color3.fromRGB(40, 40, 55)
-        }):Play()
-    else
-        NormalBox.Text = tostring(Settings.SpeedNormal)
-    end
-end)
-
-StealBox.FocusLost:Connect(function(enterPressed)
-    local num = tonumber(StealBox.Text)
-    if num and num > 0 and num <= 100 then
-        Settings.SpeedSteal = num
-        UpdateStatus()
-
-        TweenService:Create(StealBox, TweenInfo.new(0.2), {
-            BackgroundColor3 = Color3.fromRGB(80, 60, 40)
-        }):Play()
-        task.wait(0.2)
-        TweenService:Create(StealBox, TweenInfo.new(0.2), {
-            BackgroundColor3 = Color3.fromRGB(40, 40, 55)
-        }):Play()
-    else
-        StealBox.Text = tostring(Settings.SpeedSteal)
-    end
-end)
-
--- ==================== FIXED BUTTON CREATOR (100% Fixed) ====================
-
-local function CreateFixedButton(name, y, color, icon)
-    local btn = Instance.new("TextButton")
-    btn.Name = name .. "Btn"
-    btn.Size = UDim2.new(1, 0, 0, 42)
-    btn.Position = UDim2.new(0, 0, 0, y)
-    btn.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
-    btn.BorderSizePixel = 0
-    btn.Text = ""
-    btn.AutoButtonColor = false
-    btn.Parent = ButtonsContainer
-
-    -- Gradient - FIXED: Store reference but don't tween Color
-    local btnGradient = Instance.new("UIGradient")
-    btnGradient.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(40, 40, 60)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 30, 45))
-    })
-    btnGradient.Rotation = 90
-    btnGradient.Parent = btn
-
-    -- Corner
-    local btnCorner = Instance.new("UICorner")
-    btnCorner.CornerRadius = UDim.new(0, 10)
-    btnCorner.Parent = btn
-
-    -- Stroke
-    local btnStroke = Instance.new("UIStroke")
-    btnStroke.Thickness = 1.5
-    btnStroke.Color = Color3.fromRGB(60, 60, 80)
-    btnStroke.Transparency = 0.5
-    btnStroke.Parent = btn
-
-    -- Icon
-    local iconLabel = Instance.new("TextLabel")
-    iconLabel.Name = "Icon"
-    iconLabel.Size = UDim2.new(0, 30, 0, 30)
-    iconLabel.Position = UDim2.new(0, 10, 0.5, -15)
-    iconLabel.BackgroundTransparency = 1
-    iconLabel.Text = icon
-    iconLabel.TextColor3 = color
-    iconLabel.TextSize = 20
-    iconLabel.Font = Enum.Font.SourceSansBold
-    iconLabel.Parent = btn
-
-    -- Text
-    local textLabel = Instance.new("TextLabel")
-    textLabel.Name = "Text"
-    textLabel.Size = UDim2.new(1, -90, 1, 0)
-    textLabel.Position = UDim2.new(0, 45, 0, 0)
-    textLabel.BackgroundTransparency = 1
-    textLabel.Text = name .. ": OFF"
-    textLabel.TextColor3 = Color3.fromRGB(180, 180, 200)
-    textLabel.TextSize = 13
-    textLabel.Font = Enum.Font.GothamBold
-    textLabel.TextXAlignment = Enum.TextXAlignment.Left
-    textLabel.Parent = btn
-
-    -- Status Circle
-    local statusCircle = Instance.new("Frame")
-    statusCircle.Name = "StatusCircle"
-    statusCircle.Size = UDim2.new(0, 12, 0, 12)
-    statusCircle.Position = UDim2.new(1, -22, 0.5, -6)
-    statusCircle.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-    statusCircle.BorderSizePixel = 0
-    statusCircle.Parent = btn
-
-    local statusCorner = Instance.new("UICorner")
-    statusCorner.CornerRadius = UDim.new(1, 0)
-    statusCorner.Parent = statusCircle
-
-    -- State tracking - FIXED: Proper connection handling
-    local isActive = false
-    local pulseThread = nil
-
-    -- Hover Effects
-    btn.MouseEnter:Connect(function()
-        if not isActive then
-            TweenService:Create(btn, TweenInfo.new(0.2), {
-                BackgroundColor3 = Color3.fromRGB(45, 45, 65)
-            }):Play()
-            TweenService:Create(btnStroke, TweenInfo.new(0.2), {
-                Transparency = 0.3,
-                Color = color
-            }):Play()
-        end
-    end)
-
-    btn.MouseLeave:Connect(function()
-        if not isActive then
-            TweenService:Create(btn, TweenInfo.new(0.2), {
-                BackgroundColor3 = Color3.fromRGB(35, 35, 50)
-            }):Play()
-            TweenService:Create(btnStroke, TweenInfo.new(0.2), {
-                Transparency = 0.5,
-                Color = Color3.fromRGB(60, 60, 80)
-            }):Play()
-        end
-    end)
-
-    -- Toggle Function - FIXED: No tweening of UIGradient.Color
-    local function SetActive(active)
-        isActive = active
-
-        if active then
-            -- ON State - FIXED: Only tween valid properties
-            TweenService:Create(btn, TweenInfo.new(0.3), {
-                BackgroundColor3 = Color3.fromRGB(50, 50, 80)
-            }):Play()
-            
-            -- FIXED: Don't tween btnGradient.Color, just set it directly
-            btnGradient.Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, Color3.fromRGB(60, 60, 100)),
-                ColorSequenceKeypoint.new(1, Color3.fromRGB(40, 40, 70))
-            })
-            
-            TweenService:Create(btnStroke, TweenInfo.new(0.3), {
-                Color = color,
-                Transparency = 0
-            }):Play()
-            TweenService:Create(textLabel, TweenInfo.new(0.2), {
-                TextColor3 = Color3.fromRGB(255, 255, 255)
-            }):Play()
-            TweenService:Create(statusCircle, TweenInfo.new(0.3), {
-                BackgroundColor3 = color
-            }):Play()
-            textLabel.Text = name .. ": ON"
-
-            -- Pulse Animation - FIXED: Proper thread handling
-            if pulseThread then
-                task.cancel(pulseThread)
-                pulseThread = nil
-            end
-            
-            pulseThread = task.spawn(function()
-                while isActive and btn.Parent do
-                    local success = pcall(function()
-                        TweenService:Create(statusCircle, TweenInfo.new(0.5), {
-                            Size = UDim2.new(0, 14, 0, 14),
-                            Position = UDim2.new(1, -23, 0.5, -7)
-                        }):Play()
-                    end)
-                    if not success then break end
-                    
-                    task.wait(0.5)
-                    if not isActive then break end
-                    
-                    success = pcall(function()
-                        TweenService:Create(statusCircle, TweenInfo.new(0.5), {
-                            Size = UDim2.new(0, 12, 0, 12),
-                            Position = UDim2.new(1, -22, 0.5, -6)
-                        }):Play()
-                    end)
-                    if not success then break end
-                    
-                    task.wait(0.5)
+                    end
                 end
             end)
-        else
-            -- OFF State - FIXED: Cancel pulse thread properly
-            if pulseThread then
-                task.cancel(pulseThread)
-                pulseThread = nil
-            end
-            
-            TweenService:Create(btn, TweenInfo.new(0.3), {
-                BackgroundColor3 = Color3.fromRGB(35, 35, 50)
-            }):Play()
-            
-            -- FIXED: Don't tween btnGradient.Color, set it directly
-            btnGradient.Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, Color3.fromRGB(40, 40, 60)),
-                ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 30, 45))
-            })
-            
-            TweenService:Create(btnStroke, TweenInfo.new(0.3), {
-                Color = Color3.fromRGB(60, 60, 80),
-                Transparency = 0.5
-            }):Play()
-            TweenService:Create(textLabel, TweenInfo.new(0.2), {
-                TextColor3 = Color3.fromRGB(180, 180, 200)
-            }):Play()
-            TweenService:Create(statusCircle, TweenInfo.new(0.3), {
-                BackgroundColor3 = Color3.fromRGB(100, 100, 100),
-                Size = UDim2.new(0, 12, 0, 12),
-                Position = UDim2.new(1, -22, 0.5, -6)
-            }):Play()
-            textLabel.Text = name .. ": OFF"
         end
-    end
-
-    -- Click Effect
-    local function CreateRipple()
-        local ripple = Instance.new("Frame")
-        ripple.Name = "Ripple"
-        ripple.Size = UDim2.new(0, 0, 0, 0)
-        ripple.Position = UDim2.new(0.5, 0, 0.5, 0)
-        ripple.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-        ripple.BackgroundTransparency = 0.7
-        ripple.BorderSizePixel = 0
-        ripple.ZIndex = 10
-        ripple.Parent = btn
-
-        local rippleCorner = Instance.new("UICorner")
-        rippleCorner.CornerRadius = UDim.new(1, 0)
-        rippleCorner.Parent = ripple
-
-        TweenService:Create(ripple, TweenInfo.new(0.6), {
-            Size = UDim2.new(2, 0, 2, 0),
-            Position = UDim2.new(-0.5, 0, -0.5, 0),
-            BackgroundTransparency = 1
-        }):Play()
-
-        task.delay(0.6, function()
-            if ripple and ripple.Parent then
-                ripple:Destroy()
-            end
-        end)
-    end
-
-    return btn, SetActive, CreateRipple, textLabel
-end
-
--- Create 4 Fixed Buttons
-local btnLeft, setLeftActive, rippleLeft = CreateFixedButton("Auto Left", 0, Color3.fromRGB(0, 255, 150), "◄")
-local btnRight, setRightActive, rippleRight = CreateFixedButton("Auto Right", 50, Color3.fromRGB(0, 200, 255), "►")
-local btnDesync, setDesyncActive, rippleDesync = CreateFixedButton("Desync", 100, Color3.fromRGB(255, 50, 100), "👻")
-local btnSteal, setStealActive, rippleSteal = CreateFixedButton("Insta Steal", 150, Color3.fromRGB(255, 200, 50), "⚡")
-
--- Auto System
-local function StartAutoSystem()
-    if AutoConnection then AutoConnection:Disconnect() end
-
-    AutoConnection = RunService.Heartbeat:Connect(function()
-        if not Settings.AutoLeft and not Settings.AutoRight then return end
-
-        local hrp = GetHRP()
-        local hum = GetHumanoid()
-        if not hrp or not hum then return end
-
-        local points = CurrentPath == "LEFT" and LEFT_POINTS or RIGHT_POINTS
-
-        if WaitingForSteal then
-            hum:Move(Vector3.zero, false)
-            local stolen = TrySteal()
-            if stolen or HasBall() then
-                WaitingForSteal = false
-                AutoPhase = "POINT_3"
-            end
-            return
-        end
-
-        local currentPoint = points[AutoPhase]
-        if not currentPoint then
-            AutoPhase = "START"
-            currentPoint = points.START
-        end
-
-        local targetPos = Vector3.new(currentPoint.X, hrp.Position.Y, currentPoint.Z)
-        local distance = (targetPos - hrp.Position).Magnitude
-
-        if distance < 2 then
-            if AutoPhase == "START" then
-                AutoPhase = "POINT_2"
-            elseif AutoPhase == "POINT_2" then
-                WaitingForSteal = true
-                hum:Move(Vector3.zero, false)
-                return
-            elseif AutoPhase == "POINT_3" then
-                AutoPhase = "END"
-            elseif AutoPhase == "END" then
-                AutoPhase = "START"
-                return
-            end
-        end
-
-        local direction = (targetPos - hrp.Position).Unit
-        direction = Vector3.new(direction.X, 0, direction.Z).Unit
-
-        local speed = HasBall() and Settings.SpeedSteal or Settings.SpeedNormal
-
-        hum:Move(direction, false)
-        hrp.AssemblyLinearVelocity = Vector3.new(
-            direction.X * speed,
-            hrp.AssemblyLinearVelocity.Y,
-            direction.Z * speed
-        )
     end)
 end
 
-local function StopAutoSystem()
-    if AutoConnection then
-        AutoConnection:Disconnect()
-        AutoConnection = nil
-    end
-    local hum = GetHumanoid()
-    if hum then hum:Move(Vector3.zero, false) end
-    CurrentPath = nil
-    AutoPhase = "START"
-    WaitingForSteal = false
+--// ==================== [8] Desync System (FR HUB - Fixed) ====================
+local function SetDesync(state)
+    SafeCall(function()
+        if typeof(rnet) == "table" then
+            if rnet.setdesync then rnet.setdesync(state) end
+            if rnet.desync then rnet.desync(state) end
+        end
+        if typeof(delta) == "table" then
+            if delta.raknet_desync then delta.raknet_desync(state) end
+            if delta.desync then delta.desync(state) end
+        end
+    end)
 end
 
--- ==================== FIXED BUTTON CLICK CONNECTIONS ====================
-
-btnLeft.MouseButton1Click:Connect(function()
-    rippleLeft()
-    Settings.AutoLeft = not Settings.AutoLeft
-    setLeftActive(Settings.AutoLeft)
-
-    if Settings.AutoLeft then
-        Settings.AutoRight = false
-        setRightActive(false)
-        AutoPhase = "START"
-        CurrentPath = "LEFT"
-        WaitingForSteal = false
-        CreateVelocity()
-        StartAutoSystem()
-    else
-        RemoveVelocity()
-        if not Settings.AutoRight then StopAutoSystem() end
-    end
-    UpdateStatus()
-end)
-
-btnRight.MouseButton1Click:Connect(function()
-    rippleRight()
-    Settings.AutoRight = not Settings.AutoRight
-    setRightActive(Settings.AutoRight)
-
-    if Settings.AutoRight then
-        Settings.AutoLeft = false
-        setLeftActive(false)
-        AutoPhase = "START"
-        CurrentPath = "RIGHT"
-        WaitingForSteal = false
-        CreateVelocity()
-        StartAutoSystem()
-    else
-        RemoveVelocity()
-        if not Settings.AutoLeft then StopAutoSystem() end
-    end
-    UpdateStatus()
-end)
-
-btnDesync.MouseButton1Click:Connect(function()
-    rippleDesync()
-    Settings.Desync = not Settings.Desync
-    setDesyncActive(Settings.Desync)
-
-    if Settings.Desync then
-        local hrp = GetHRP()
-        if hrp then TargetServerPos = hrp.Position end
-
-        DesyncConnection = RunService.RenderStepped:Connect(function()
-            if TargetServerPos then
-                SendFakePosition(TargetServerPos)
-            end
-            local hrp = GetHRP()
-            if hrp then
-                hrp.CFrame = hrp.CFrame + Vector3.new(
-                    math.random(-20, 20),
-                    math.random(-5, 5),
-                    math.random(-20, 20)
-                )
-            end
-        end)
-    else
-        if DesyncConnection then
-            DesyncConnection:Disconnect()
-            DesyncConnection = nil
+local function SendFakePosition(position)
+    SafeCall(function()
+        local cf = CFrame.new(position)
+        if typeof(rnet) == "table" then
+            if rnet.sendphysics then rnet.sendphysics(cf) end
+            if rnet.sendposition then rnet.sendposition(position) end
         end
-        TargetServerPos = nil
-    end
-    UpdateStatus()
-end)
+        if typeof(delta) == "table" then
+            if delta.sendphysics then delta.sendphysics(cf) end
+            if delta.sendposition then delta.sendposition(position) end
+        end
+    end)
+end
 
-btnSteal.MouseButton1Click:Connect(function()
-    rippleSteal()
-    Settings.InstaSteal = not Settings.InstaSteal
-    setStealActive(Settings.InstaSteal)
-    isInstaStealActive = Settings.InstaSteal
-    UpdateStatus()
-end)
+local function FastRespawn()
+    SafeCall(function()
+        local char = Player.Character
+        if not char then return end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hrp or not hum then return end
 
--- Settings Button Toggle - Fixed
-SettingsBtn.MouseButton1Click:Connect(function()
-    Settings.SettingsVisible = not Settings.SettingsVisible
+        hrp.Velocity = Vector3.new(0, 5000, 0)
+        hrp.RotVelocity = Vector3.new(99999, 99999, 99999)
 
-    -- Rotate icon
-    TweenService:Create(SettingsBtn, TweenInfo.new(0.3), {
-        Rotation = Settings.SettingsVisible and 45 or 0
-    }):Play()
-
-    -- Show/Hide Settings Panel
-    if Settings.SettingsVisible then
-        SettingsPanel.Visible = true
-        SettingsPanel.Size = UDim2.new(0, 150, 0, 0)
-        TweenService:Create(SettingsPanel, TweenInfo.new(0.3, Enum.EasingStyle.Back), {
-            Size = UDim2.new(0, 150, 0, 200)
-        }):Play()
-    else
-        TweenService:Create(SettingsPanel, TweenInfo.new(0.2), {
-            Size = UDim2.new(0, 150, 0, 0)
-        }):Play()
-        task.delay(0.2, function()
-            SettingsPanel.Visible = false
+        task.delay(0.05, function()
+            if hum then hum:ChangeState(Enum.HumanoidStateType.Dead) end
         end)
-    end
-end)
+    end)
+end
 
--- Minimize - Fixed
-local isMinimized = false
-MinBtn.MouseButton1Click:Connect(function()
-    isMinimized = not isMinimized
+local function ToggleDesync()
+    DesyncEnabled = not DesyncEnabled
 
-    if isMinimized then
-        -- Hide content and settings
-        Content.Visible = false
-        SettingsPanel.Visible = false
-        Settings.SettingsVisible = false
-        TweenService:Create(MainContainer, TweenInfo.new(0.3), {
-            Size = UDim2.new(0, 240, 0, 40)
-        }):Play()
-        MinBtn.Text = "+"
+    if DesyncEnabled then
+        local hrp = GetHRP()
+        if hrp then TargetServerPosition = hrp.Position end
+
+        SetDesync(true)
+        FastRespawn()
+
+        Connections.Desync = RunService.RenderStepped:Connect(function()
+            SafeCall(function()
+                local hrp = GetHRP()
+                if hrp and TargetServerPosition then
+                    SendFakePosition(TargetServerPosition)
+                end
+            end)
+        end)
+
+        print("[LevixFR] Desync Enabled")
     else
-        -- Show content
-        Content.Visible = true
-        TweenService:Create(MainContainer, TweenInfo.new(0.3), {
-            Size = UDim2.new(0, 400, 0, 280)
+        SetDesync(false)
+        if Connections.Desync then
+            Connections.Desync:Disconnect()
+            Connections.Desync = nil
+        end
+        TargetServerPosition = nil
+        print("[LevixFR] Desync Disabled")
+    end
+
+    return DesyncEnabled
+end
+
+--// ==================== [9] UI System (FR HUB Style - Enhanced) ====================
+local function CreateUI()
+    -- Remove old UI
+    SafeCall(function()
+        local old = PlayerGui:FindFirstChild("LevixFR_Hub")
+        if old then old:Destroy() end
+    end)
+
+    local SG = Instance.new("ScreenGui")
+    SG.Name = "LevixFR_Hub"
+    SG.ResetOnSpawn = false
+    SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    SG.Parent = PlayerGui
+
+    -- Colors
+    local C = {
+        bg = Color3.fromRGB(15, 15, 25),
+        accent = Color3.fromRGB(0, 195, 255),
+        text = Color3.fromRGB(225, 245, 255),
+        border = Color3.fromRGB(0, 115, 225),
+        success = Color3.fromRGB(70, 225, 145),
+        danger = Color3.fromRGB(255, 85, 115),
+        warning = Color3.fromRGB(255, 180, 50),
+        purple = Color3.fromRGB(180, 70, 255),
+    }
+
+    -- Main Frame
+    local Main = Instance.new("Frame")
+    Main.Name = "Main"
+    Main.Size = UDim2.new(0, 320, 0, 420)
+    Main.Position = UDim2.new(0.5, -160, 0.5, -210)
+    Main.BackgroundColor3 = C.bg
+    Main.BackgroundTransparency = 0.1
+    Main.BorderSizePixel = 0
+    Main.Active = true
+    Main.ClipsDescendants = true
+    Main.Parent = SG
+
+    -- Corner
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 16)
+    Corner.Parent = Main
+
+    -- Glow
+    local Glow = Instance.new("ImageLabel")
+    Glow.Name = "Glow"
+    Glow.Size = UDim2.new(1, 40, 1, 40)
+    Glow.Position = UDim2.new(0, -20, 0, -20)
+    Glow.BackgroundTransparency = 1
+    Glow.Image = "rbxassetid://5554236805"
+    Glow.ImageColor3 = C.accent
+    Glow.ImageTransparency = 0.85
+    Glow.ScaleType = Enum.ScaleType.Slice
+    Glow.SliceCenter = Rect.new(23, 23, 277, 277)
+    Glow.ZIndex = 0
+    Glow.Parent = Main
+
+    -- Animated Border
+    local Border = Instance.new("UIStroke")
+    Border.Thickness = 2
+    Border.Color = C.border
+    Border.Transparency = 0.3
+    Border.Parent = Main
+
+    task.spawn(function()
+        local t = 0
+        while Main.Parent do
+            t += 0.05
+            Border.Color = Color3.fromHSV((tick() * 0.1) % 1, 0.6, 1)
+            Border.Transparency = 0.3 + math.sin(t) * 0.2
+            task.wait(0.1)
+        end
+    end)
+
+    -- Header
+    local Header = Instance.new("Frame")
+    Header.Name = "Header"
+    Header.Size = UDim2.new(1, 0, 0, 50)
+    Header.BackgroundColor3 = Color3.fromRGB(25, 25, 40)
+    Header.BackgroundTransparency = 0.3
+    Header.BorderSizePixel = 0
+    Header.Parent = Main
+
+    local HeaderCorner = Instance.new("UICorner")
+    HeaderCorner.CornerRadius = UDim.new(0, 16)
+    HeaderCorner.Parent = Header
+
+    -- Title
+    local Title = Instance.new("TextLabel")
+    Title.Size = UDim2.new(1, -80, 1, 0)
+    Title.Position = UDim2.new(0, 15, 0, 0)
+    Title.BackgroundTransparency = 1
+    Title.Text = "⚡ LEVIX FR HUB"
+    Title.TextColor3 = C.accent
+    Title.Font = Enum.Font.GothamBlack
+    Title.TextSize = 20
+    Title.TextXAlignment = Enum.TextXAlignment.Left
+    Title.Parent = Header
+
+    -- Settings Button
+    local SettingsBtn = Instance.new("TextButton")
+    SettingsBtn.Name = "SettingsBtn"
+    SettingsBtn.Size = UDim2.new(0, 36, 0, 36)
+    SettingsBtn.Position = UDim2.new(1, -76, 0.5, -18)
+    SettingsBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+    SettingsBtn.Text = "⚙️"
+    SettingsBtn.TextColor3 = C.text
+    SettingsBtn.TextSize = 20
+    SettingsBtn.Font = Enum.Font.SourceSansBold
+    SettingsBtn.Parent = Header
+
+    Instance.new("UICorner", SettingsBtn).CornerRadius = UDim.new(0, 8)
+
+    -- Minimize Button
+    local MinBtn = Instance.new("TextButton")
+    MinBtn.Name = "MinBtn"
+    MinBtn.Size = UDim2.new(0, 36, 0, 36)
+    MinBtn.Position = UDim2.new(1, -40, 0.5, -18)
+    MinBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+    MinBtn.Text = "−"
+    MinBtn.TextColor3 = C.text
+    MinBtn.TextSize = 24
+    MinBtn.Font = Enum.Font.GothamBold
+    MinBtn.Parent = Header
+
+    Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 8)
+
+    -- Container
+    local Container = Instance.new("Frame")
+    Container.Name = "Container"
+    Container.Size = UDim2.new(1, -20, 1, -70)
+    Container.Position = UDim2.new(0, 10, 0, 60)
+    Container.BackgroundTransparency = 1
+    Container.Parent = Main
+
+    -- Status Label
+    local StatusLabel = Instance.new("TextLabel")
+    StatusLabel.Name = "Status"
+    StatusLabel.Size = UDim2.new(1, 0, 0, 30)
+    StatusLabel.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+    StatusLabel.BackgroundTransparency = 0.3
+    StatusLabel.Text = "✨ Ready | N:53 | S:29"
+    StatusLabel.TextColor3 = C.success
+    StatusLabel.TextSize = 12
+    StatusLabel.Font = Enum.Font.GothamBold
+    StatusLabel.Parent = Container
+
+    Instance.new("UICorner", StatusLabel).CornerRadius = UDim.new(0, 8)
+
+    -- Button Creator
+    local function CreateToggleButton(name, yPos, color, icon, callback)
+        local btn = Instance.new("TextButton")
+        btn.Name = name .. "Btn"
+        btn.Size = UDim2.new(1, 0, 0, 45)
+        btn.Position = UDim2.new(0, 0, 0, yPos)
+        btn.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+        btn.BorderSizePixel = 0
+        btn.Text = ""
+        btn.AutoButtonColor = false
+        btn.Parent = Container
+
+        local Corner = Instance.new("UICorner")
+        Corner.CornerRadius = UDim.new(0, 10)
+        Corner.Parent = btn
+
+        local Stroke = Instance.new("UIStroke")
+        Stroke.Thickness = 1.5
+        Stroke.Color = Color3.fromRGB(60, 60, 80)
+        Stroke.Transparency = 0.5
+        Stroke.Parent = btn
+
+        local IconLabel = Instance.new("TextLabel")
+        IconLabel.Size = UDim2.new(0, 30, 0, 30)
+        IconLabel.Position = UDim2.new(0, 12, 0.5, -15)
+        IconLabel.BackgroundTransparency = 1
+        IconLabel.Text = icon
+        IconLabel.TextColor3 = color
+        IconLabel.Font = Enum.Font.SourceSansBold
+        IconLabel.TextSize = 20
+        IconLabel.Parent = btn
+
+        local TextLabel = Instance.new("TextLabel")
+        TextLabel.Size = UDim2.new(1, -90, 1, 0)
+        TextLabel.Position = UDim2.new(0, 48, 0, 0)
+        TextLabel.BackgroundTransparency = 1
+        TextLabel.Text = name .. ": OFF"
+        TextLabel.TextColor3 = C.text
+        TextLabel.Font = Enum.Font.GothamBold
+        TextLabel.TextSize = 14
+        TextLabel.TextXAlignment = Enum.TextXAlignment.Left
+        TextLabel.Parent = btn
+
+        local StatusCircle = Instance.new("Frame")
+        StatusCircle.Size = UDim2.new(0, 14, 0, 14)
+        StatusCircle.Position = UDim2.new(1, -24, 0.5, -7)
+        StatusCircle.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+        StatusCircle.BorderSizePixel = 0
+        StatusCircle.Parent = btn
+
+        Instance.new("UICorner", StatusCircle).CornerRadius = UDim.new(1, 0)
+
+        local isActive = false
+        local pulseThread = nil
+
+        local function SetVisual(active)
+            isActive = active
+
+            if active then
+                TweenService:Create(btn, TweenInfo.new(0.3), {
+                    BackgroundColor3 = Color3.fromRGB(40, 40, 65)
+                }):Play()
+                TweenService:Create(Stroke, TweenInfo.new(0.3), {
+                    Color = color,
+                    Transparency = 0
+                }):Play()
+                TweenService:Create(TextLabel, TweenInfo.new(0.2), {
+                    TextColor3 = color
+                }):Play()
+                TweenService:Create(StatusCircle, TweenInfo.new(0.3), {
+                    BackgroundColor3 = color
+                }):Play()
+                TextLabel.Text = name .. ": ON"
+
+                -- Pulse animation
+                if pulseThread then task.cancel(pulseThread) end
+                pulseThread = task.spawn(function()
+                    while isActive and btn.Parent do
+                        SafeCall(function()
+                            TweenService:Create(StatusCircle, TweenInfo.new(0.5), {
+                                Size = UDim2.new(0, 16, 0, 16),
+                                Position = UDim2.new(1, -25, 0.5, -8)
+                            }):Play()
+                        end)
+                        task.wait(0.5)
+                        if not isActive then break end
+                        SafeCall(function()
+                            TweenService:Create(StatusCircle, TweenInfo.new(0.5), {
+                                Size = UDim2.new(0, 14, 0, 14),
+                                Position = UDim2.new(1, -24, 0.5, -7)
+                            }):Play()
+                        end)
+                        task.wait(0.5)
+                    end
+                end)
+            else
+                if pulseThread then task.cancel(pulseThread) pulseThread = nil end
+
+                TweenService:Create(btn, TweenInfo.new(0.3), {
+                    BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+                }):Play()
+                TweenService:Create(Stroke, TweenInfo.new(0.3), {
+                    Color = Color3.fromRGB(60, 60, 80),
+                    Transparency = 0.5
+                }):Play()
+                TweenService:Create(TextLabel, TweenInfo.new(0.2), {
+                    TextColor3 = C.text
+                }):Play()
+                TweenService:Create(StatusCircle, TweenInfo.new(0.3), {
+                    BackgroundColor3 = Color3.fromRGB(100, 100, 100),
+                    Size = UDim2.new(0, 14, 0, 14),
+                    Position = UDim2.new(1, -24, 0.5, -7)
+                }):Play()
+                TextLabel.Text = name .. ": OFF"
+            end
+        end
+
+        btn.MouseEnter:Connect(function()
+            if not isActive then
+                TweenService:Create(btn, TweenInfo.new(0.2), {
+                    BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+                }):Play()
+            end
+        end)
+
+        btn.MouseLeave:Connect(function()
+            if not isActive then
+                TweenService:Create(btn, TweenInfo.new(0.2), {
+                    BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+                }):Play()
+            end
+        end)
+
+        btn.MouseButton1Click:Connect(function()
+            local newState = callback()
+            SetVisual(newState)
+
+            -- Ripple effect
+            local ripple = Instance.new("Frame")
+            ripple.Size = UDim2.new(0, 0, 0, 0)
+            ripple.Position = UDim2.new(0.5, 0, 0.5, 0)
+            ripple.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            ripple.BackgroundTransparency = 0.7
+            ripple.BorderSizePixel = 0
+            ripple.ZIndex = 10
+            ripple.Parent = btn
+            Instance.new("UICorner", ripple).CornerRadius = UDim.new(1, 0)
+
+            TweenService:Create(ripple, TweenInfo.new(0.6), {
+                Size = UDim2.new(2, 0, 2, 0),
+                Position = UDim2.new(-0.5, 0, -0.5, 0),
+                BackgroundTransparency = 1
+            }):Play()
+
+            task.delay(0.6, function() ripple:Destroy() end)
+        end)
+
+        return SetVisual
+    end
+
+    -- Create Buttons
+    local updateLeft, updateRight, updateDesync, updateSteal
+
+    -- Auto Left
+    updateLeft = CreateToggleButton("Auto Left", 40, C.success, "◄", function()
+        Settings.AutoLeft = not Settings.AutoLeft
+
+        if Settings.AutoLeft then
+            if Settings.AutoRight then
+                Settings.AutoRight = false
+                updateRight(false)
+            end
+            autoPhase = "START"
+            waitingForSteal = false
+            StartAutoSystem()
+        else
+            if not Settings.AutoRight then StopAutoSystem() end
+        end
+
+        SaveSettings()
+        return Settings.AutoLeft
+    end)
+
+    -- Auto Right
+    updateRight = CreateToggleButton("Auto Right", 95, C.accent, "►", function()
+        Settings.AutoRight = not Settings.AutoRight
+
+        if Settings.AutoRight then
+            if Settings.AutoLeft then
+                Settings.AutoLeft = false
+                updateLeft(false)
+            end
+            autoPhase = "START"
+            waitingForSteal = false
+            StartAutoSystem()
+        else
+            if not Settings.AutoLeft then StopAutoSystem() end
+        end
+
+        SaveSettings()
+        return Settings.AutoRight
+    end)
+
+    -- Desync
+    updateDesync = CreateToggleButton("Desync", 150, C.purple, "👻", function()
+        local state = ToggleDesync()
+        Settings.Desync = state
+        SaveSettings()
+        return state
+    end)
+
+    -- Insta Steal
+    updateSteal = CreateToggleButton("Insta Steal", 205, C.warning, "⚡", function()
+        Settings.InstaSteal = not Settings.InstaSteal
+        isInstaGrabActive = Settings.InstaSteal
+        SaveSettings()
+        return Settings.InstaSteal
+    end)
+
+    -- Settings Panel
+    local SettingsPanel = Instance.new("Frame")
+    SettingsPanel.Name = "SettingsPanel"
+    SettingsPanel.Size = UDim2.new(0, 160, 0, 220)
+    SettingsPanel.Position = UDim2.new(0, 330, 0, 60)
+    SettingsPanel.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+    SettingsPanel.BackgroundTransparency = 0.1
+    SettingsPanel.BorderSizePixel = 0
+    SettingsPanel.Visible = false
+    SettingsPanel.Parent = Main
+
+    Instance.new("UICorner", SettingsPanel).CornerRadius = UDim.new(0, 12)
+
+    local SettingsBorder = Instance.new("UIStroke")
+    SettingsBorder.Thickness = 2
+    SettingsBorder.Color = C.border
+    SettingsBorder.Transparency = 0.3
+    SettingsBorder.Parent = SettingsPanel
+
+    -- Settings Title
+    local SettingsTitle = Instance.new("TextLabel")
+    SettingsTitle.Size = UDim2.new(1, 0, 0, 35)
+    SettingsTitle.BackgroundTransparency = 1
+    SettingsTitle.Text = "⚡ Speed Settings"
+    SettingsTitle.TextColor3 = C.warning
+    SettingsTitle.TextSize = 14
+    SettingsTitle.Font = Enum.Font.GothamBold
+    SettingsTitle.Parent = SettingsPanel
+
+    -- Normal Speed
+    local NormalLabel = Instance.new("TextLabel")
+    NormalLabel.Size = UDim2.new(1, -20, 0, 20)
+    NormalLabel.Position = UDim2.new(0, 10, 0, 40)
+    NormalLabel.BackgroundTransparency = 1
+    NormalLabel.Text = "Normal Speed:"
+    NormalLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    NormalLabel.TextSize = 11
+    NormalLabel.Font = Enum.Font.Gotham
+    NormalLabel.TextXAlignment = Enum.TextXAlignment.Left
+    NormalLabel.Parent = SettingsPanel
+
+    local NormalBox = Instance.new("TextBox")
+    NormalBox.Size = UDim2.new(1, -20, 0, 30)
+    NormalBox.Position = UDim2.new(0, 10, 0, 62)
+    NormalBox.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+    NormalBox.Text = tostring(Settings.SpeedNormal)
+    NormalBox.TextColor3 = C.success
+    NormalBox.TextSize = 13
+    NormalBox.Font = Enum.Font.GothamBold
+    NormalBox.ClearTextOnFocus = false
+    NormalBox.Parent = SettingsPanel
+    Instance.new("UICorner", NormalBox).CornerRadius = UDim.new(0, 6)
+
+    -- Steal Speed
+    local StealLabel = Instance.new("TextLabel")
+    StealLabel.Size = UDim2.new(1, -20, 0, 20)
+    StealLabel.Position = UDim2.new(0, 10, 0, 100)
+    StealLabel.BackgroundTransparency = 1
+    StealLabel.Text = "Steal Speed:"
+    StealLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    StealLabel.TextSize = 11
+    StealLabel.Font = Enum.Font.Gotham
+    StealLabel.TextXAlignment = Enum.TextXAlignment.Left
+    StealLabel.Parent = SettingsPanel
+
+    local StealBox = Instance.new("TextBox")
+    StealBox.Size = UDim2.new(1, -20, 0, 30)
+    StealBox.Position = UDim2.new(0, 10, 0, 122)
+    StealBox.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+    StealBox.Text = tostring(Settings.SpeedSteal)
+    StealBox.TextColor3 = C.warning
+    StealBox.TextSize = 13
+    StealBox.Font = Enum.Font.GothamBold
+    StealBox.ClearTextOnFocus = false
+    StealBox.Parent = SettingsPanel
+    Instance.new("UICorner", StealBox).CornerRadius = UDim.new(0, 6)
+
+    -- Info
+    local InfoLabel = Instance.new("TextLabel")
+    InfoLabel.Size = UDim2.new(1, -20, 0, 50)
+    InfoLabel.Position = UDim2.new(0, 10, 0, 165)
+    InfoLabel.BackgroundTransparency = 1
+    InfoLabel.Text = "Press Enter to save\nRange: 1-100"
+    InfoLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+    InfoLabel.TextSize = 10
+    InfoLabel.Font = Enum.Font.Gotham
+    InfoLabel.TextWrapped = true
+    InfoLabel.Parent = SettingsPanel
+
+    -- TextBox Events
+    NormalBox.FocusLost:Connect(function()
+        local num = tonumber(NormalBox.Text)
+        if num and num >= 1 and num <= 100 then
+            Settings.SpeedNormal = num
+            SaveSettings()
+            TweenService:Create(NormalBox, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(60, 80, 60)}):Play()
+            task.wait(0.2)
+            TweenService:Create(NormalBox, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 55)}):Play()
+        else
+            NormalBox.Text = tostring(Settings.SpeedNormal)
+        end
+    end)
+
+    StealBox.FocusLost:Connect(function()
+        local num = tonumber(StealBox.Text)
+        if num and num >= 1 and num <= 100 then
+            Settings.SpeedSteal = num
+            SaveSettings()
+            TweenService:Create(StealBox, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(80, 60, 40)}):Play()
+            task.wait(0.2)
+            TweenService:Create(StealBox, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 55)}):Play()
+        else
+            StealBox.Text = tostring(Settings.SpeedSteal)
+        end
+    end)
+
+    -- Settings Toggle
+    local settingsVisible = false
+    SettingsBtn.MouseButton1Click:Connect(function()
+        settingsVisible = not settingsVisible
+
+        TweenService:Create(SettingsBtn, TweenInfo.new(0.3), {
+            Rotation = settingsVisible and 45 or 0
         }):Play()
-        MinBtn.Text = "−"
+
+        if settingsVisible then
+            SettingsPanel.Visible = true
+            SettingsPanel.Size = UDim2.new(0, 160, 0, 0)
+            TweenService:Create(SettingsPanel, TweenInfo.new(0.3, Enum.EasingStyle.Back), {
+                Size = UDim2.new(0, 160, 0, 220)
+            }):Play()
+        else
+            TweenService:Create(SettingsPanel, TweenInfo.new(0.2), {
+                Size = UDim2.new(0, 160, 0, 0)
+            }):Play()
+            task.delay(0.2, function() SettingsPanel.Visible = false end)
+        end
+    end)
+
+    -- Minimize
+    local isMinimized = false
+    MinBtn.MouseButton1Click:Connect(function()
+        isMinimized = not isMinimized
+        Settings.Minimized = isMinimized
+        SaveSettings()
+
+        if isMinimized then
+            Container.Visible = false
+            SettingsPanel.Visible = false
+            TweenService:Create(Main, TweenInfo.new(0.3), {Size = UDim2.new(0, 320, 0, 50)}):Play()
+            MinBtn.Text = "+"
+        else
+            Container.Visible = true
+            TweenService:Create(Main, TweenInfo.new(0.3), {Size = UDim2.new(0, 320, 0, 420)}):Play()
+            MinBtn.Text = "−"
+        end
+    end)
+
+    -- Drag System
+    local dragging = false
+    local dragStart = nil
+    local startPos = nil
+
+    Header.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = Main.Position
+        end
+    end)
+
+    Header.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+
+    Header.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+
+    -- Restore saved states
+    if Settings.Minimized then
+        Container.Visible = false
+        Main.Size = UDim2.new(0, 320, 0, 50)
+        MinBtn.Text = "+"
     end
-end)
 
--- Dragging - Fixed (Drag MainContainer instead of Main)
-local dragging = false
-local dragStart = nil
-local startPos = nil
+    return SG, updateLeft, updateRight, updateDesync, updateSteal, StatusLabel
+end
 
-TitleBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = MainContainer.Position
-    end
-end)
+--// ==================== [10] Initialization ====================
+local UI, updateLeftVis, updateRightVis, updateDesyncVis, updateStealVis, StatusLabel = CreateUI()
 
-TitleBar.InputChanged:Connect(function(input)
-    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local delta = input.Position - dragStart
-        MainContainer.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    end
-end)
-
-TitleBar.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = false
-    end
-end)
-
--- Start Systems
+-- Start Insta Steal loop
 StartInstaStealSystem()
 
--- Respawn
-LocalPlayer.CharacterAdded:Connect(function()
+-- Character respawn handler
+Player.CharacterAdded:Connect(function()
     task.wait(0.5)
+
+    -- Restore Galaxy
+    if galaxyVectorForce then
+        SetupGalaxyForce()
+        UpdateGalaxyForce()
+    end
+
+    -- Restore Auto
     if Settings.AutoLeft or Settings.AutoRight then
-        CreateVelocity()
+        autoPhase = "START"
+        waitingForSteal = false
         StartAutoSystem()
+    end
+
+    -- Restore Desync
+    if Settings.Desync then
+        task.wait(0.3)
+        local hrp = GetHRP()
+        if hrp then TargetServerPosition = hrp.Position end
+        SetDesync(true)
     end
 end)
 
--- Notify
-Notify("✨ FR HUB", "Fixed UI Loaded! | Settings: ⚙️ | 100% Working!", 4)
+-- Status update loop
+task.spawn(function()
+    while task.wait(0.5) do
+        SafeCall(function()
+            if StatusLabel and StatusLabel.Parent then
+                local status = Settings.AutoLeft and "Left" or Settings.AutoRight and "Right" or "Ready"
+                StatusLabel.Text = string.format("✨ %s | N:%d | S:%d", status, Settings.SpeedNormal, Settings.SpeedSteal)
+            end
+        end)
+    end
+end)
+
+-- Notification
+SafeCall(function()
+    StarterGui:SetCore("SendNotification", {
+        Title = "⚡ LEVIX FR HUB",
+        Text = "Loaded! | Auto: Fixed | Desync: Ready | Steal: Active",
+        Duration = 5,
+        Icon = "rbxassetid://9079992154"
+    })
+end)
+
+print("[LevixFR] Hub Loaded Successfully!")
+print("[LevixFR] Systems: Auto Left/Right (Fixed), Desync, Insta Steal")
