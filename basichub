@@ -1,4 +1,4 @@
--- FR HUB LITE - 4 Buttons + Settings (Beautiful & Compact)
+-- FR HUB LITE - Fixed Buttons + Integrated Settings
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
@@ -19,8 +19,8 @@ local function Notify(title, text, duration)
     end)
 end
 
-if _G.FRHUB_BEAUTIFUL then return end
-_G.FRHUB_BEAUTIFUL = true
+if _G.FRHUB_FIXED then return end
+_G.FRHUB_FIXED = true
 
 -- Settings
 local Settings = {
@@ -81,19 +81,19 @@ end
 local function CreateVelocity()
     local hrp = GetHRP()
     if not hrp then return nil end
-    
+
     if CurrentVel then CurrentVel:Destroy() end
-    
+
     for _, v in pairs(hrp:GetChildren()) do
         if v:IsA("BodyVelocity") then v:Destroy() end
     end
-    
+
     local vel = Instance.new("BodyVelocity")
     vel.MaxForce = Vector3.new(400000, 400000, 400000)
     vel.Velocity = Vector3.zero
     vel.P = 10000
     vel.Parent = hrp
-    
+
     CurrentVel = vel
     return vel
 end
@@ -109,10 +109,10 @@ end
 local function TrySteal()
     local ball = Workspace:FindFirstChild("Basketball")
     if not ball then return false end
-    
+
     local owner = ball:FindFirstChild("Owner")
     if not owner or owner.Value == LocalPlayer then return false end
-    
+
     for i = 1, 3 do
         pcall(function()
             if ReplicatedStorage:FindFirstChild("Events") and ReplicatedStorage.Events:FindFirstChild("BallEvent") then
@@ -121,7 +121,7 @@ local function TrySteal()
         end)
         task.wait(0.02)
     end
-    
+
     return HasBall()
 end
 
@@ -130,7 +130,7 @@ local function StartInstaStealSystem()
     task.spawn(function()
         while task.wait(0.1) do
             if not isInstaStealActive then continue end
-            
+
             local plots = Workspace:FindFirstChild("Plots")
             if plots then
                 for _, plot in pairs(plots:GetChildren()) do
@@ -140,7 +140,7 @@ local function StartInstaStealSystem()
                             local base = podium:FindFirstChild("Base")
                             local spawn = base and base:FindFirstChild("Spawn")
                             local att = spawn and spawn:FindFirstChild("PromptAttachment")
-                            
+
                             if att then
                                 for _, prompt in pairs(att:GetChildren()) do
                                     if prompt:IsA("ProximityPrompt") then
@@ -152,7 +152,7 @@ local function StartInstaStealSystem()
                     end
                 end
             end
-            
+
             local ball = Workspace:FindFirstChild("Basketball")
             if ball then
                 local owner = ball:FindFirstChild("Owner")
@@ -185,22 +185,34 @@ local function SendFakePosition(pos)
     end
 end
 
--- ==================== BEAUTIFUL UI ====================
+-- ==================== FIXED UI ====================
 
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "FRHUB_BEAUTIFUL"
+ScreenGui.Name = "FRHUB_FIXED"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
--- Main Frame (Small & Beautiful)
+-- Main Container (holds both Main Frame and Settings)
+local MainContainer = Instance.new("Frame")
+MainContainer.Name = "MainContainer"
+MainContainer.Size = UDim2.new(0, 400, 0, 280)
+MainContainer.Position = UDim2.new(0.5, -200, 0.5, -140)
+MainContainer.BackgroundTransparency = 1
+MainContainer.BorderSizePixel = 0
+MainContainer.Active = true
+MainContainer.ClipsDescendants = false
+MainContainer.Parent = ScreenGui
+
+-- Main Frame (Left side - Original UI)
 local Main = Instance.new("Frame")
+Main.Name = "Main"
 Main.Size = UDim2.new(0, 240, 0, 280)
-Main.Position = UDim2.new(0.5, -120, 0.5, -140)
+Main.Position = UDim2.new(0, 0, 0, 0)
 Main.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
 Main.BorderSizePixel = 0
 Main.Active = true
 Main.ClipsDescendants = true
-Main.Parent = ScreenGui
+Main.Parent = MainContainer
 
 -- Gradient Background
 local UIGradient = Instance.new("UIGradient")
@@ -249,6 +261,7 @@ end)
 
 -- Title Bar
 local TitleBar = Instance.new("Frame")
+TitleBar.Name = "TitleBar"
 TitleBar.Size = UDim2.new(1, 0, 0, 40)
 TitleBar.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
 TitleBar.BackgroundTransparency = 0.5
@@ -261,6 +274,7 @@ TitleCorner.Parent = TitleBar
 
 -- Title
 local Title = Instance.new("TextLabel")
+Title.Name = "Title"
 Title.Size = UDim2.new(1, -100, 1, 0)
 Title.Position = UDim2.new(0, 15, 0, 0)
 Title.BackgroundTransparency = 1
@@ -273,6 +287,7 @@ Title.Parent = TitleBar
 
 -- Settings Button (⚙️)
 local SettingsBtn = Instance.new("TextButton")
+SettingsBtn.Name = "SettingsBtn"
 SettingsBtn.Size = UDim2.new(0, 32, 0, 32)
 SettingsBtn.Position = UDim2.new(1, -68, 0.5, -16)
 SettingsBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
@@ -288,6 +303,7 @@ SettingsBtnCorner.Parent = SettingsBtn
 
 -- Minimize
 local MinBtn = Instance.new("TextButton")
+MinBtn.Name = "MinBtn"
 MinBtn.Size = UDim2.new(0, 32, 0, 32)
 MinBtn.Position = UDim2.new(1, -36, 0.5, -16)
 MinBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
@@ -303,13 +319,15 @@ MinBtnCorner.Parent = MinBtn
 
 -- Content Frame
 local Content = Instance.new("Frame")
+Content.Name = "Content"
 Content.Size = UDim2.new(1, -20, 1, -50)
 Content.Position = UDim2.new(0, 10, 0, 45)
 Content.BackgroundTransparency = 1
 Content.Parent = Main
 
--- Status Label (Beautiful)
+-- Status Label
 local Status = Instance.new("TextLabel")
+Status.Name = "Status"
 Status.Size = UDim2.new(1, 0, 0, 28)
 Status.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
 Status.BackgroundTransparency = 0.3
@@ -323,36 +341,56 @@ local StatusCorner = Instance.new("UICorner")
 StatusCorner.CornerRadius = UDim.new(0, 8)
 StatusCorner.Parent = Status
 
--- Settings Panel (Hidden by default)
+-- Buttons Container
+local ButtonsContainer = Instance.new("Frame")
+ButtonsContainer.Name = "ButtonsContainer"
+ButtonsContainer.Size = UDim2.new(1, 0, 1, -40)
+ButtonsContainer.Position = UDim2.new(0, 0, 0, 40)
+ButtonsContainer.BackgroundTransparency = 1
+ButtonsContainer.Parent = Content
+
+-- ==================== SETTINGS PANEL (RIGHT SIDE - CHILD OF MAIN CONTAINER) ====================
+
 local SettingsPanel = Instance.new("Frame")
-SettingsPanel.Size = UDim2.new(1, 0, 0, 90)
-SettingsPanel.Position = UDim2.new(0, 0, 0, 35)
+SettingsPanel.Name = "SettingsPanel"
+SettingsPanel.Size = UDim2.new(0, 150, 0, 200)
+SettingsPanel.Position = UDim2.new(0, 245, 0, 40)
 SettingsPanel.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
 SettingsPanel.BackgroundTransparency = 0.1
 SettingsPanel.BorderSizePixel = 0
 SettingsPanel.Visible = false
-SettingsPanel.Parent = Content
+SettingsPanel.ClipsDescendants = true
+SettingsPanel.Parent = MainContainer
 
 local SettingsPanelCorner = Instance.new("UICorner")
 SettingsPanelCorner.CornerRadius = UDim.new(0, 12)
 SettingsPanelCorner.Parent = SettingsPanel
 
+-- Settings Border
+local SettingsBorder = Instance.new("UIStroke")
+SettingsBorder.Thickness = 2
+SettingsBorder.Color = Color3.fromRGB(100, 100, 255)
+SettingsBorder.Transparency = 0.3
+SettingsBorder.Parent = SettingsPanel
+
 -- Settings Title
 local SettingsTitle = Instance.new("TextLabel")
-SettingsTitle.Size = UDim2.new(1, 0, 0, 25)
+SettingsTitle.Name = "SettingsTitle"
+SettingsTitle.Size = UDim2.new(1, 0, 0, 30)
 SettingsTitle.BackgroundTransparency = 1
 SettingsTitle.Text = "⚡ Speed Settings"
 SettingsTitle.TextColor3 = Color3.fromRGB(255, 200, 100)
-SettingsTitle.TextSize = 12
+SettingsTitle.TextSize = 13
 SettingsTitle.Font = Enum.Font.GothamBold
 SettingsTitle.Parent = SettingsPanel
 
 -- Normal Speed Label
 local NormalLabel = Instance.new("TextLabel")
-NormalLabel.Size = UDim2.new(0.4, 0, 0, 25)
-NormalLabel.Position = UDim2.new(0, 10, 0, 30)
+NormalLabel.Name = "NormalLabel"
+NormalLabel.Size = UDim2.new(1, -20, 0, 20)
+NormalLabel.Position = UDim2.new(0, 10, 0, 35)
 NormalLabel.BackgroundTransparency = 1
-NormalLabel.Text = "Normal:"
+NormalLabel.Text = "Normal Speed:"
 NormalLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 NormalLabel.TextSize = 11
 NormalLabel.Font = Enum.Font.Gotham
@@ -361,8 +399,9 @@ NormalLabel.Parent = SettingsPanel
 
 -- Normal Speed TextBox
 local NormalBox = Instance.new("TextBox")
-NormalBox.Size = UDim2.new(0.5, -15, 0, 25)
-NormalBox.Position = UDim2.new(0.5, 5, 0, 30)
+NormalBox.Name = "NormalBox"
+NormalBox.Size = UDim2.new(1, -20, 0, 28)
+NormalBox.Position = UDim2.new(0, 10, 0, 55)
 NormalBox.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
 NormalBox.Text = tostring(Settings.SpeedNormal)
 NormalBox.TextColor3 = Color3.fromRGB(100, 255, 150)
@@ -377,10 +416,11 @@ NormalBoxCorner.Parent = NormalBox
 
 -- Steal Speed Label
 local StealLabel = Instance.new("TextLabel")
-StealLabel.Size = UDim2.new(0.4, 0, 0, 25)
-StealLabel.Position = UDim2.new(0, 10, 0, 60)
+StealLabel.Name = "StealLabel"
+StealLabel.Size = UDim2.new(1, -20, 0, 20)
+StealLabel.Position = UDim2.new(0, 10, 0, 90)
 StealLabel.BackgroundTransparency = 1
-StealLabel.Text = "Steal:"
+StealLabel.Text = "Steal Speed:"
 StealLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 StealLabel.TextSize = 11
 StealLabel.Font = Enum.Font.Gotham
@@ -389,8 +429,9 @@ StealLabel.Parent = SettingsPanel
 
 -- Steal Speed TextBox
 local StealBox = Instance.new("TextBox")
-StealBox.Size = UDim2.new(0.5, -15, 0, 25)
-StealBox.Position = UDim2.new(0.5, 5, 0, 60)
+StealBox.Name = "StealBox"
+StealBox.Size = UDim2.new(1, -20, 0, 28)
+StealBox.Position = UDim2.new(0, 10, 0, 110)
 StealBox.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
 StealBox.Text = tostring(Settings.SpeedSteal)
 StealBox.TextColor3 = Color3.fromRGB(255, 150, 100)
@@ -403,6 +444,20 @@ local StealBoxCorner = Instance.new("UICorner")
 StealBoxCorner.CornerRadius = UDim.new(0, 6)
 StealBoxCorner.Parent = StealBox
 
+-- Info Label
+local InfoLabel = Instance.new("TextLabel")
+InfoLabel.Name = "InfoLabel"
+InfoLabel.Size = UDim2.new(1, -20, 0, 40)
+InfoLabel.Position = UDim2.new(0, 10, 0, 150)
+InfoLabel.BackgroundTransparency = 1
+InfoLabel.Text = "Press Enter to save values (1-100)"
+InfoLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+InfoLabel.TextSize = 10
+InfoLabel.Font = Enum.Font.Gotham
+InfoLabel.TextWrapped = true
+InfoLabel.TextXAlignment = Enum.TextXAlignment.Left
+InfoLabel.Parent = SettingsPanel
+
 -- Update Status Function
 local function UpdateStatus()
     Status.Text = string.format("✨ %s | N:%d | S:%d", 
@@ -412,14 +467,13 @@ local function UpdateStatus()
     )
 end
 
--- TextBox Events - Instant Update
-NormalBox.FocusLost:Connect(function()
+-- TextBox Events - Fixed
+NormalBox.FocusLost:Connect(function(enterPressed)
     local num = tonumber(NormalBox.Text)
     if num and num > 0 and num <= 100 then
         Settings.SpeedNormal = num
         UpdateStatus()
-        
-        -- Animation
+
         TweenService:Create(NormalBox, TweenInfo.new(0.2), {
             BackgroundColor3 = Color3.fromRGB(60, 80, 60)
         }):Play()
@@ -432,13 +486,12 @@ NormalBox.FocusLost:Connect(function()
     end
 end)
 
-StealBox.FocusLost:Connect(function()
+StealBox.FocusLost:Connect(function(enterPressed)
     local num = tonumber(StealBox.Text)
     if num and num > 0 and num <= 100 then
         Settings.SpeedSteal = num
         UpdateStatus()
-        
-        -- Animation
+
         TweenService:Create(StealBox, TweenInfo.new(0.2), {
             BackgroundColor3 = Color3.fromRGB(80, 60, 40)
         }):Play()
@@ -451,16 +504,11 @@ StealBox.FocusLost:Connect(function()
     end
 end)
 
--- Buttons Container
-local ButtonsContainer = Instance.new("Frame")
-ButtonsContainer.Size = UDim2.new(1, 0, 1, -40)
-ButtonsContainer.Position = UDim2.new(0, 0, 0, 40)
-ButtonsContainer.BackgroundTransparency = 1
-ButtonsContainer.Parent = Content
+-- ==================== FIXED BUTTON CREATOR ====================
 
--- Beautiful Button Creator
-local function CreateBeautifulButton(name, y, color, icon)
+local function CreateFixedButton(name, y, color, icon)
     local btn = Instance.new("TextButton")
+    btn.Name = name .. "Btn"
     btn.Size = UDim2.new(1, 0, 0, 42)
     btn.Position = UDim2.new(0, 0, 0, y)
     btn.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
@@ -468,7 +516,7 @@ local function CreateBeautifulButton(name, y, color, icon)
     btn.Text = ""
     btn.AutoButtonColor = false
     btn.Parent = ButtonsContainer
-    
+
     -- Gradient
     local btnGradient = Instance.new("UIGradient")
     btnGradient.Color = ColorSequence.new({
@@ -477,21 +525,22 @@ local function CreateBeautifulButton(name, y, color, icon)
     })
     btnGradient.Rotation = 90
     btnGradient.Parent = btn
-    
+
     -- Corner
     local btnCorner = Instance.new("UICorner")
     btnCorner.CornerRadius = UDim.new(0, 10)
     btnCorner.Parent = btn
-    
+
     -- Stroke
     local btnStroke = Instance.new("UIStroke")
     btnStroke.Thickness = 1.5
     btnStroke.Color = Color3.fromRGB(60, 60, 80)
     btnStroke.Transparency = 0.5
     btnStroke.Parent = btn
-    
+
     -- Icon
     local iconLabel = Instance.new("TextLabel")
+    iconLabel.Name = "Icon"
     iconLabel.Size = UDim2.new(0, 30, 0, 30)
     iconLabel.Position = UDim2.new(0, 10, 0.5, -15)
     iconLabel.BackgroundTransparency = 1
@@ -500,9 +549,10 @@ local function CreateBeautifulButton(name, y, color, icon)
     iconLabel.TextSize = 20
     iconLabel.Font = Enum.Font.SourceSansBold
     iconLabel.Parent = btn
-    
+
     -- Text
     local textLabel = Instance.new("TextLabel")
+    textLabel.Name = "Text"
     textLabel.Size = UDim2.new(1, -90, 1, 0)
     textLabel.Position = UDim2.new(0, 45, 0, 0)
     textLabel.BackgroundTransparency = 1
@@ -512,32 +562,39 @@ local function CreateBeautifulButton(name, y, color, icon)
     textLabel.Font = Enum.Font.GothamBold
     textLabel.TextXAlignment = Enum.TextXAlignment.Left
     textLabel.Parent = btn
-    
+
     -- Status Circle
     local statusCircle = Instance.new("Frame")
+    statusCircle.Name = "StatusCircle"
     statusCircle.Size = UDim2.new(0, 12, 0, 12)
     statusCircle.Position = UDim2.new(1, -22, 0.5, -6)
     statusCircle.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
     statusCircle.BorderSizePixel = 0
     statusCircle.Parent = btn
-    
+
     local statusCorner = Instance.new("UICorner")
     statusCorner.CornerRadius = UDim.new(1, 0)
     statusCorner.Parent = statusCircle
-    
+
+    -- State tracking
+    local isActive = false
+    local pulseConnection = nil
+
     -- Hover Effects
     btn.MouseEnter:Connect(function()
-        TweenService:Create(btn, TweenInfo.new(0.2), {
-            BackgroundColor3 = Color3.fromRGB(45, 45, 65)
-        }):Play()
-        TweenService:Create(btnStroke, TweenInfo.new(0.2), {
-            Transparency = 0.3,
-            Color = color
-        }):Play()
+        if not isActive then
+            TweenService:Create(btn, TweenInfo.new(0.2), {
+                BackgroundColor3 = Color3.fromRGB(45, 45, 65)
+            }):Play()
+            TweenService:Create(btnStroke, TweenInfo.new(0.2), {
+                Transparency = 0.3,
+                Color = color
+            }):Play()
+        end
     end)
-    
+
     btn.MouseLeave:Connect(function()
-        if not btn:GetAttribute("Active") then
+        if not isActive then
             TweenService:Create(btn, TweenInfo.new(0.2), {
                 BackgroundColor3 = Color3.fromRGB(35, 35, 50)
             }):Play()
@@ -547,11 +604,11 @@ local function CreateBeautifulButton(name, y, color, icon)
             }):Play()
         end
     end)
-    
+
     -- Toggle Function
     local function SetActive(active)
-        btn:SetAttribute("Active", active)
-        
+        isActive = active
+
         if active then
             -- ON State
             TweenService:Create(btn, TweenInfo.new(0.3), {
@@ -574,15 +631,17 @@ local function CreateBeautifulButton(name, y, color, icon)
                 BackgroundColor3 = color
             }):Play()
             textLabel.Text = name .. ": ON"
-            
+
             -- Pulse Animation
-            task.spawn(function()
-                while btn:GetAttribute("Active") and btn.Parent do
+            if pulseConnection then pulseConnection:Disconnect() end
+            pulseConnection = task.spawn(function()
+                while isActive and btn.Parent do
                     TweenService:Create(statusCircle, TweenInfo.new(0.5), {
                         Size = UDim2.new(0, 14, 0, 14),
                         Position = UDim2.new(1, -23, 0.5, -7)
                     }):Play()
                     task.wait(0.5)
+                    if not isActive then break end
                     TweenService:Create(statusCircle, TweenInfo.new(0.5), {
                         Size = UDim2.new(0, 12, 0, 12),
                         Position = UDim2.new(1, -22, 0.5, -6)
@@ -592,6 +651,9 @@ local function CreateBeautifulButton(name, y, color, icon)
             end)
         else
             -- OFF State
+            if pulseConnection then
+                pulseConnection = nil
+            end
             TweenService:Create(btn, TweenInfo.new(0.3), {
                 BackgroundColor3 = Color3.fromRGB(35, 35, 50)
             }):Play()
@@ -609,16 +671,18 @@ local function CreateBeautifulButton(name, y, color, icon)
                 TextColor3 = Color3.fromRGB(180, 180, 200)
             }):Play()
             TweenService:Create(statusCircle, TweenInfo.new(0.3), {
-                BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+                BackgroundColor3 = Color3.fromRGB(100, 100, 100),
+                Size = UDim2.new(0, 12, 0, 12),
+                Position = UDim2.new(1, -22, 0.5, -6)
             }):Play()
             textLabel.Text = name .. ": OFF"
         end
     end
-    
+
     -- Click Effect
-    btn.MouseButton1Click:Connect(function()
-        -- Ripple
+    local function CreateRipple()
         local ripple = Instance.new("Frame")
+        ripple.Name = "Ripple"
         ripple.Size = UDim2.new(0, 0, 0, 0)
         ripple.Position = UDim2.new(0.5, 0, 0.5, 0)
         ripple.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
@@ -626,44 +690,46 @@ local function CreateBeautifulButton(name, y, color, icon)
         ripple.BorderSizePixel = 0
         ripple.ZIndex = 10
         ripple.Parent = btn
-        
+
         local rippleCorner = Instance.new("UICorner")
         rippleCorner.CornerRadius = UDim.new(1, 0)
         rippleCorner.Parent = ripple
-        
+
         TweenService:Create(ripple, TweenInfo.new(0.6), {
             Size = UDim2.new(2, 0, 2, 0),
             Position = UDim2.new(-0.5, 0, -0.5, 0),
             BackgroundTransparency = 1
         }):Play()
-        
+
         task.delay(0.6, function()
-            ripple:Destroy()
+            if ripple and ripple.Parent then
+                ripple:Destroy()
+            end
         end)
-    end)
-    
-    return btn, SetActive, textLabel
+    end
+
+    return btn, SetActive, CreateRipple, textLabel
 end
 
--- Create 4 Beautiful Buttons
-local btnLeft, setLeftActive = CreateBeautifulButton("Auto Left", 0, Color3.fromRGB(0, 255, 150), "◄")
-local btnRight, setRightActive = CreateBeautifulButton("Auto Right", 50, Color3.fromRGB(0, 200, 255), "►")
-local btnDesync, setDesyncActive = CreateBeautifulButton("Desync", 100, Color3.fromRGB(255, 50, 100), "👻")
-local btnSteal, setStealActive = CreateBeautifulButton("Insta Steal", 150, Color3.fromRGB(255, 200, 50), "⚡")
+-- Create 4 Fixed Buttons
+local btnLeft, setLeftActive, rippleLeft = CreateFixedButton("Auto Left", 0, Color3.fromRGB(0, 255, 150), "◄")
+local btnRight, setRightActive, rippleRight = CreateFixedButton("Auto Right", 50, Color3.fromRGB(0, 200, 255), "►")
+local btnDesync, setDesyncActive, rippleDesync = CreateFixedButton("Desync", 100, Color3.fromRGB(255, 50, 100), "👻")
+local btnSteal, setStealActive, rippleSteal = CreateFixedButton("Insta Steal", 150, Color3.fromRGB(255, 200, 50), "⚡")
 
 -- Auto System
 local function StartAutoSystem()
     if AutoConnection then AutoConnection:Disconnect() end
-    
+
     AutoConnection = RunService.Heartbeat:Connect(function()
         if not Settings.AutoLeft and not Settings.AutoRight then return end
-        
+
         local hrp = GetHRP()
         local hum = GetHumanoid()
         if not hrp or not hum then return end
-        
+
         local points = CurrentPath == "LEFT" and LEFT_POINTS or RIGHT_POINTS
-        
+
         if WaitingForSteal then
             hum:Move(Vector3.zero, false)
             local stolen = TrySteal()
@@ -673,16 +739,16 @@ local function StartAutoSystem()
             end
             return
         end
-        
+
         local currentPoint = points[AutoPhase]
         if not currentPoint then
             AutoPhase = "START"
             currentPoint = points.START
         end
-        
+
         local targetPos = Vector3.new(currentPoint.X, hrp.Position.Y, currentPoint.Z)
         local distance = (targetPos - hrp.Position).Magnitude
-        
+
         if distance < 2 then
             if AutoPhase == "START" then
                 AutoPhase = "POINT_2"
@@ -697,12 +763,12 @@ local function StartAutoSystem()
                 return
             end
         end
-        
+
         local direction = (targetPos - hrp.Position).Unit
         direction = Vector3.new(direction.X, 0, direction.Z).Unit
-        
+
         local speed = HasBall() and Settings.SpeedSteal or Settings.SpeedNormal
-        
+
         hum:Move(direction, false)
         hrp.AssemblyLinearVelocity = Vector3.new(
             direction.X * speed,
@@ -724,11 +790,13 @@ local function StopAutoSystem()
     WaitingForSteal = false
 end
 
--- Button Click Events
+-- ==================== FIXED BUTTON CLICK CONNECTIONS ====================
+
 btnLeft.MouseButton1Click:Connect(function()
+    rippleLeft()
     Settings.AutoLeft = not Settings.AutoLeft
     setLeftActive(Settings.AutoLeft)
-    
+
     if Settings.AutoLeft then
         Settings.AutoRight = false
         setRightActive(false)
@@ -745,9 +813,10 @@ btnLeft.MouseButton1Click:Connect(function()
 end)
 
 btnRight.MouseButton1Click:Connect(function()
+    rippleRight()
     Settings.AutoRight = not Settings.AutoRight
     setRightActive(Settings.AutoRight)
-    
+
     if Settings.AutoRight then
         Settings.AutoLeft = false
         setLeftActive(false)
@@ -764,13 +833,14 @@ btnRight.MouseButton1Click:Connect(function()
 end)
 
 btnDesync.MouseButton1Click:Connect(function()
+    rippleDesync()
     Settings.Desync = not Settings.Desync
     setDesyncActive(Settings.Desync)
-    
+
     if Settings.Desync then
         local hrp = GetHRP()
         if hrp then TargetServerPos = hrp.Position end
-        
+
         DesyncConnection = RunService.RenderStepped:Connect(function()
             if TargetServerPos then
                 SendFakePosition(TargetServerPos)
@@ -795,60 +865,88 @@ btnDesync.MouseButton1Click:Connect(function()
 end)
 
 btnSteal.MouseButton1Click:Connect(function()
+    rippleSteal()
     Settings.InstaSteal = not Settings.InstaSteal
     setStealActive(Settings.InstaSteal)
     isInstaStealActive = Settings.InstaSteal
     UpdateStatus()
 end)
 
--- Settings Button Toggle
+-- Settings Button Toggle - Fixed
 SettingsBtn.MouseButton1Click:Connect(function()
     Settings.SettingsVisible = not Settings.SettingsVisible
-    SettingsPanel.Visible = Settings.SettingsVisible
-    
+
     -- Rotate icon
     TweenService:Create(SettingsBtn, TweenInfo.new(0.3), {
         Rotation = Settings.SettingsVisible and 45 or 0
     }):Play()
-    
-    -- Animate panel
+
+    -- Show/Hide Settings Panel
     if Settings.SettingsVisible then
-        SettingsPanel.Size = UDim2.new(1, 0, 0, 0)
+        SettingsPanel.Visible = true
+        SettingsPanel.Size = UDim2.new(0, 150, 0, 0)
         TweenService:Create(SettingsPanel, TweenInfo.new(0.3, Enum.EasingStyle.Back), {
-            Size = UDim2.new(1, 0, 0, 90)
+            Size = UDim2.new(0, 150, 0, 200)
         }):Play()
+    else
+        TweenService:Create(SettingsPanel, TweenInfo.new(0.2), {
+            Size = UDim2.new(0, 150, 0, 0)
+        }):Play()
+        task.delay(0.2, function()
+            SettingsPanel.Visible = false
+        end)
     end
-    
-    UpdateStatus()
 end)
 
--- Minimize
+-- Minimize - Fixed
 local isMinimized = false
 MinBtn.MouseButton1Click:Connect(function()
     isMinimized = not isMinimized
-    Content.Visible = not isMinimized
-    Main.Size = isMinimized and UDim2.new(0, 240, 0, 40) or UDim2.new(0, 240, 0, 280)
-    MinBtn.Text = isMinimized and "+" or "−"
+
+    if isMinimized then
+        -- Hide content and settings
+        Content.Visible = false
+        SettingsPanel.Visible = false
+        Settings.SettingsVisible = false
+        TweenService:Create(MainContainer, TweenInfo.new(0.3), {
+            Size = UDim2.new(0, 240, 0, 40)
+        }):Play()
+        MinBtn.Text = "+"
+    else
+        -- Show content
+        Content.Visible = true
+        TweenService:Create(MainContainer, TweenInfo.new(0.3), {
+            Size = UDim2.new(0, 400, 0, 280)
+        }):Play()
+        MinBtn.Text = "−"
+    end
 end)
 
--- Dragging
-local dragging, dragStart, startPos
+-- Dragging - Fixed (Drag MainContainer instead of Main)
+local dragging = false
+local dragStart = nil
+local startPos = nil
+
 TitleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
-        startPos = Main.Position
+        startPos = MainContainer.Position
     end
 end)
 
 TitleBar.InputChanged:Connect(function(input)
     if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
         local delta = input.Position - dragStart
-        Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        MainContainer.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end
 end)
 
-TitleBar.InputEnded:Connect(function() dragging = false end)
+TitleBar.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
 
 -- Start Systems
 StartInstaStealSystem()
@@ -863,4 +961,4 @@ LocalPlayer.CharacterAdded:Connect(function()
 end)
 
 -- Notify
-Notify("✨ FR HUB", "Beautiful UI Loaded! | Settings: ⚙️", 4)
+Notify("✨ FR HUB", "Fixed UI Loaded! | Settings: ⚙️ | Buttons Fixed!", 4)
