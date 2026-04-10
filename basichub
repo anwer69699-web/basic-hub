@@ -1,6 +1,6 @@
--- FR HUB V13 - Pro Optimized Edition
--- Features: Unified Loop, Anti-Rubberband, Smart Cache, FailSafe, Dynamic Updates
--- Optimized for: Performance + Stability + Low Detection
+-- FR HUB V14 - Classic Enhanced
+-- Features: Original InstaSteal + Original Invisibility (Enhanced & Bug-Free)
+-- Fixed: All error sources, optimized for stability
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
@@ -11,12 +11,12 @@ local HttpService = game:GetService("HttpService")
 local StarterGui = game:GetService("StarterGui")
 local Workspace = game:GetService("Workspace")
 
---// ==================== [1] SAFE EXECUTION WRAPPER ====================
+--// ==================== [1] ERROR HANDLER ====================
 
 local function SafeCall(func, ...)
     local success, result = pcall(func, ...)
     if not success then
-        warn("[FR HUB] Error: " .. tostring(result))
+        warn("[FR HUB Error] " .. tostring(result))
     end
     return success, result
 end
@@ -24,7 +24,7 @@ end
 --// ==================== [2] CONFIGURATION ====================
 
 local Settings = {
-    NormalSpeed = 35,
+    NormalSpeed = 60,
     StealSpeed = 25,
     GalaxyGravityPercent = 35,
     GalaxyHopPower = 28,
@@ -34,12 +34,10 @@ local Settings = {
     SpeedBoost = false,
     Invisibility = false,
     Minimized = false,
-    SettingsVisible = false,
-    AntiLag = true,
-    InvisUpdateRate = 2.5
+    SettingsVisible = false
 }
 
---// ==================== [3] NOTIFICATION SYSTEM ====================
+--// ==================== [3] NOTIFICATION ====================
 
 local function Notify(title, text, duration)
     duration = duration or 3
@@ -53,24 +51,26 @@ local function Notify(title, text, duration)
     end)
 end
 
-if _G.FRHUB_V13_LOADED then
+if _G.FRHUB_V14_LOADED then
     Notify("FR HUB", "السكربت محمل بالفعل!", 3)
     return
 end
-_G.FRHUB_V13_LOADED = true
+_G.FRHUB_V14_LOADED = true
 
---// ==================== [4] SAVE/LOAD SETTINGS ====================
+--// ==================== [4] SAVE/LOAD ====================
 
 local function SaveSettings()
     SafeCall(function()
-        writefile("FRHUB_V13_Config.json", HttpService:JSONEncode(Settings))
+        local json = HttpService:JSONEncode(Settings)
+        writefile("FRHUB_V14_Config.json", json)
     end)
 end
 
 local function LoadSettings()
     SafeCall(function()
-        if isfile("FRHUB_V13_Config.json") then
-            local loaded = HttpService:JSONDecode(readfile("FRHUB_V13_Config.json"))
+        if isfile("FRHUB_V14_Config.json") then
+            local json = readfile("FRHUB_V14_Config.json")
+            local loaded = HttpService:JSONDecode(json)
             for k, v in pairs(loaded) do
                 if Settings[k] ~= nil then
                     Settings[k] = v
@@ -82,15 +82,14 @@ end
 
 LoadSettings()
 
---// ==================== [5] SCREEN GUI - COMPACT DESIGN ====================
+--// ==================== [5] GUI ====================
 
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "FRHUB_V13_Pro"
+ScreenGui.Name = "FRHUB_V14_Classic"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
--- Main Frame
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = UDim2.new(0, 200, 0, 180)
@@ -110,7 +109,6 @@ MainStroke.Color = Color3.fromRGB(0, 150, 255)
 MainStroke.Transparency = 0.25
 MainStroke.Parent = MainFrame
 
--- Header
 local Header = Instance.new("Frame")
 Header.Size = UDim2.new(1, 0, 0, 32)
 Header.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
@@ -123,14 +121,13 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -70, 1, 0)
 Title.Position = UDim2.new(0, 10, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "FR HUB | V13"
+Title.Text = "FR HUB | V14"
 Title.TextColor3 = Color3.fromRGB(0, 200, 255)
 Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = Header
 
--- Settings Button
 local SettingsBtn = Instance.new("TextButton")
 SettingsBtn.Size = UDim2.new(0, 24, 0, 24)
 SettingsBtn.Position = UDim2.new(1, -60, 0, 4)
@@ -143,7 +140,6 @@ SettingsBtn.Parent = Header
 
 Instance.new("UICorner", SettingsBtn).CornerRadius = UDim.new(0, 5)
 
--- Minimize Button
 local MinimizeBtn = Instance.new("TextButton")
 MinimizeBtn.Size = UDim2.new(0, 24, 0, 24)
 MinimizeBtn.Position = UDim2.new(1, -32, 0, 4)
@@ -156,14 +152,12 @@ MinimizeBtn.Parent = Header
 
 Instance.new("UICorner", MinimizeBtn).CornerRadius = UDim.new(0, 5)
 
--- Container
 local Container = Instance.new("Frame")
 Container.Size = UDim2.new(1, -12, 1, -42)
 Container.Position = UDim2.new(0, 6, 0, 36)
 Container.BackgroundTransparency = 1
 Container.Parent = MainFrame
 
--- Settings Panel
 local SettingsPanel = Instance.new("Frame")
 SettingsPanel.Size = UDim2.new(0, 160, 0, 180)
 SettingsPanel.Position = UDim2.new(0, -170, 0, 0)
@@ -182,7 +176,6 @@ SettingsStroke.Color = Color3.fromRGB(255, 150, 50)
 SettingsStroke.Transparency = 0.3
 SettingsStroke.Parent = SettingsPanel
 
--- Settings Header
 local SettingsHeader = Instance.new("Frame")
 SettingsHeader.Size = UDim2.new(1, 0, 0, 28)
 SettingsHeader.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
@@ -200,20 +193,18 @@ SettingsTitle.TextSize = 12
 SettingsTitle.Font = Enum.Font.GothamBold
 SettingsTitle.Parent = SettingsHeader
 
--- Settings Container
 local SettingsContainer = Instance.new("ScrollingFrame")
 SettingsContainer.Size = UDim2.new(1, -10, 1, -35)
 SettingsContainer.Position = UDim2.new(0, 5, 0, 30)
 SettingsContainer.BackgroundTransparency = 1
 SettingsContainer.ScrollBarThickness = 2
 SettingsContainer.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 120)
-SettingsContainer.CanvasSize = UDim2.new(0, 0, 0, 200)
+SettingsContainer.CanvasSize = UDim2.new(0, 0, 0, 150)
 SettingsContainer.Parent = SettingsPanel
 
---// ==================== [6] DRAG SYSTEM ====================
+--// ==================== [6] DRAG ====================
 
-local dragging = false
-local dragInput, dragStart, startPos, dragTarget = nil, nil, nil, nil
+local dragging, dragInput, dragStart, startPos, dragTarget = false, nil, nil, nil, nil
 
 local function MakeDraggable(frame)
     frame.InputBegan:Connect(function(input)
@@ -245,18 +236,16 @@ UserInputService.InputChanged:Connect(function(input)
         local delta = input.Position - dragStart
         local newPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
         dragTarget.Position = newPos
-        
         if dragTarget == MainFrame and SettingsPanel.Visible then
             SettingsPanel.Position = UDim2.new(newPos.X.Scale, newPos.X.Offset - 170, newPos.Y.Scale, newPos.Y.Offset)
         end
     end
 end)
 
---// ==================== [7] UI COMPONENTS ====================
+--// ==================== [7] UI CREATOR ====================
 
 local function CreateToggle(name, color, icon, parent, yPos, callback)
     local btn = Instance.new("TextButton")
-    btn.Name = name .. "Btn"
     btn.Size = UDim2.new(1, -4, 0, 34)
     btn.Position = UDim2.new(0, 2, 0, yPos)
     btn.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
@@ -271,16 +260,6 @@ local function CreateToggle(name, color, icon, parent, yPos, callback)
     stroke.Color = Color3.fromRGB(50, 55, 70)
     stroke.Transparency = 0.5
     stroke.Parent = btn
-    
-    local glow = Instance.new("Frame")
-    glow.Name = "Glow"
-    glow.Size = UDim2.new(1, 0, 1, 0)
-    glow.BackgroundColor3 = color
-    glow.BackgroundTransparency = 1
-    glow.BorderSizePixel = 0
-    glow.ZIndex = 0
-    glow.Parent = btn
-    Instance.new("UICorner", glow).CornerRadius = UDim.new(0, 8)
     
     local iconLabel = Instance.new("TextLabel")
     iconLabel.Size = UDim2.new(0, 22, 0, 22)
@@ -332,24 +311,22 @@ local function CreateToggle(name, color, icon, parent, yPos, callback)
     
     local function updateVisual(state, instant)
         isActive = state
-        local tweenInfo = instant and TweenInfo.new(0) or TweenInfo.new(0.2, Enum.EasingStyle.Quad)
+        local info = instant and TweenInfo.new(0) or TweenInfo.new(0.2, Enum.EasingStyle.Quad)
         
         if state then
-            TweenService:Create(btn, tweenInfo, {BackgroundColor3 = Color3.fromRGB(40, 48, 65)}):Play()
-            TweenService:Create(stroke, tweenInfo, {Color = color, Transparency = 0.2}):Play()
-            TweenService:Create(label, tweenInfo, {TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
-            TweenService:Create(switchFrame, tweenInfo, {BackgroundColor3 = color}):Play()
+            TweenService:Create(btn, info, {BackgroundColor3 = Color3.fromRGB(40, 48, 65)}):Play()
+            TweenService:Create(stroke, info, {Color = color, Transparency = 0.2}):Play()
+            TweenService:Create(label, info, {TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
+            TweenService:Create(switchFrame, info, {BackgroundColor3 = color}):Play()
             TweenService:Create(switchCircle, TweenInfo.new(0.2, Enum.EasingStyle.Back), {Position = UDim2.new(1, -16, 0.5, -7), BackgroundColor3 = Color3.fromRGB(255, 255, 255)}):Play()
-            TweenService:Create(statusLine, tweenInfo, {Size = UDim2.new(1, 0, 0, 2)}):Play()
-            TweenService:Create(glow, tweenInfo, {BackgroundTransparency = 0.92}):Play()
+            TweenService:Create(statusLine, info, {Size = UDim2.new(1, 0, 0, 2)}):Play()
         else
-            TweenService:Create(btn, tweenInfo, {BackgroundColor3 = Color3.fromRGB(30, 30, 38)}):Play()
-            TweenService:Create(stroke, tweenInfo, {Color = Color3.fromRGB(50, 55, 70), Transparency = 0.5}):Play()
-            TweenService:Create(label, tweenInfo, {TextColor3 = Color3.fromRGB(200, 200, 210)}):Play()
-            TweenService:Create(switchFrame, tweenInfo, {BackgroundColor3 = Color3.fromRGB(45, 45, 55)}):Play()
+            TweenService:Create(btn, info, {BackgroundColor3 = Color3.fromRGB(30, 30, 38)}):Play()
+            TweenService:Create(stroke, info, {Color = Color3.fromRGB(50, 55, 70), Transparency = 0.5}):Play()
+            TweenService:Create(label, info, {TextColor3 = Color3.fromRGB(200, 200, 210)}):Play()
+            TweenService:Create(switchFrame, info, {BackgroundColor3 = Color3.fromRGB(45, 45, 55)}):Play()
             TweenService:Create(switchCircle, TweenInfo.new(0.2, Enum.EasingStyle.Back), {Position = UDim2.new(0, 2, 0.5, -7), BackgroundColor3 = Color3.fromRGB(130, 130, 150)}):Play()
-            TweenService:Create(statusLine, tweenInfo, {Size = UDim2.new(0, 0, 0, 2)}):Play()
-            TweenService:Create(glow, tweenInfo, {BackgroundTransparency = 1}):Play()
+            TweenService:Create(statusLine, info, {Size = UDim2.new(0, 0, 0, 2)}):Play()
         end
     end
     
@@ -357,18 +334,6 @@ local function CreateToggle(name, color, icon, parent, yPos, callback)
         local newState = not isActive
         updateVisual(newState)
         callback(newState)
-    end)
-    
-    btn.MouseEnter:Connect(function()
-        if not isActive then
-            TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(38, 38, 48)}):Play()
-        end
-    end)
-    
-    btn.MouseLeave:Connect(function()
-        if not isActive then
-            TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(30, 30, 38)}):Play()
-        end
     end)
     
     return updateVisual
@@ -437,13 +402,10 @@ local function CreateSlider(name, min, max, default, color, parent, yPos, callba
     local function updateSlider(input)
         local pos = math.clamp((input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
         local value = math.floor(min + (max - min) * pos)
-        
         fill.Size = UDim2.new(pos, 0, 1, 0)
         knob.Position = UDim2.new(pos, -6, 0.5, -6)
         valueLabel.Text = tostring(value)
-        
         callback(value)
-        return value
     end
     
     track.InputBegan:Connect(function(input)
@@ -473,51 +435,60 @@ local function CreateSlider(name, min, max, default, color, parent, yPos, callba
     end
 end
 
---// ==================== [8] SMART CACHE SYSTEM ====================
+--// ==================== [8] ORIGINAL INSTA STEAL (ENHANCED) ====================
 
-local CachedPrompts = {}
-local LastCacheTime = 0
-local CacheInterval = 3
+local InstaStealConnection = nil
 
-local function UpdatePromptCache()
-    local currentTime = tick()
-    if currentTime - LastCacheTime < CacheInterval then return end
-    LastCacheTime = currentTime
+local function StartInstaSteal()
+    if InstaStealConnection then return end
     
-    CachedPrompts = {}
-    SafeCall(function()
-        local plots = Workspace:FindFirstChild("Plots")
-        if not plots then return end
-        
-        for _, plot in pairs(plots:GetChildren()) do
-            local podiums = plot:FindFirstChild("AnimalPodiums")
-            if podiums then
-                for _, podium in pairs(podiums:GetChildren()) do
-                    local base = podium:FindFirstChild("Base")
-                    local spawn = base and base:FindFirstChild("Spawn")
-                    local att = spawn and spawn:FindFirstChild("PromptAttachment")
+    InstaStealConnection = task.spawn(function()
+        while Settings.InstaSteal do
+            SafeCall(function()
+                local plots = Workspace:FindFirstChild("Plots")
+                if not plots then return end
+                
+                for _, plot in pairs(plots:GetChildren()) do
+                    if not Settings.InstaSteal then break end
                     
-                    if att then
-                        for _, prompt in pairs(att:GetChildren()) do
-                            if prompt:IsA("ProximityPrompt") then
-                                table.insert(CachedPrompts, prompt)
+                    local podiums = plot:FindFirstChild("AnimalPodiums")
+                    if podiums then
+                        for _, podium in pairs(podiums:GetChildren()) do
+                            if not Settings.InstaSteal then break end
+                            
+                            local base = podium:FindFirstChild("Base")
+                            local spawn = base and base:FindFirstChild("Spawn")
+                            local att = spawn and spawn:FindFirstChild("PromptAttachment")
+                            
+                            if att then
+                                for _, prompt in pairs(att:GetChildren()) do
+                                    if prompt:IsA("ProximityPrompt") then
+                                        prompt.HoldDuration = 0.01
+                                        prompt.MaxActivationDistance = 12
+                                    end
+                                end
                             end
                         end
                     end
                 end
-            end
+            end)
+            task.wait(0.1)
         end
     end)
 end
 
---// ==================== [9] GALAXY SYSTEM (CACHED MASS) ====================
+local function StopInstaSteal()
+    Settings.InstaSteal = false
+    InstaStealConnection = nil
+end
+
+--// ==================== [9] GALAXY SYSTEM ====================
 
 local galaxyVectorForce = nil
 local galaxyAttachment = nil
 local spaceHeld = false
 local lastHopTime = 0
-local cachedMass = 0
-local massCalculated = false
+local cachedMass = nil
 
 local function CalculateMass()
     SafeCall(function()
@@ -530,7 +501,6 @@ local function CalculateMass()
                 cachedMass = cachedMass + p:GetMass()
             end
         end
-        massCalculated = true
     end)
 end
 
@@ -559,7 +529,9 @@ local function SetupGalaxy()
 end
 
 local function UpdateGalaxy()
-    if not Settings.Galaxy or not galaxyVectorForce or not massCalculated then return end
+    if not Settings.Galaxy or not galaxyVectorForce then return end
+    if not cachedMass then CalculateMass() end
+    if not cachedMass then return end
     
     local targetGravity = workspace.Gravity * (Settings.GalaxyGravityPercent / 100)
     galaxyVectorForce.Force = Vector3.new(0, cachedMass * (workspace.Gravity - targetGravity) * 0.98, 0)
@@ -588,94 +560,62 @@ local function DoMiniHop()
     end)
 end
 
---// ==================== [10] ANTI-RUBBERBAND SPEED SYSTEM ====================
+--// ==================== [10] SPEED SYSTEM (FIXED) ====================
 
-local LastPosition = nil
-local LastSpeedTime = 0
-local VelocitySmooth = Vector3.new(0, 0, 0)
-local PositionHistory = {}
+local SpeedConnection = nil
 
-local function GetDynamicInterval()
-    return math.clamp(1 / (Settings.NormalSpeed / 25), 0.03, 0.15)
-end
-
-local function UpdateSpeed()
-    if not Settings.SpeedBoost then return end
+local function StartSpeedBoost()
+    if SpeedConnection then return end
     
-    SafeCall(function()
-        local c = LocalPlayer.Character
-        if not c then return end
-        local h = c:FindFirstChild("HumanoidRootPart")
-        local hum = c:FindFirstChildOfClass("Humanoid")
-        if not h or not hum then return end
+    SpeedConnection = RunService.Heartbeat:Connect(function()
+        if not Settings.SpeedBoost then return end
         
-        local isStealing = LocalPlayer:GetAttribute("Stealing")
-        if isStealing then return end
-        
-        local md = hum.MoveDirection
-        if md.Magnitude < 0.1 then return end
-        
-        -- Anti-rubberband: Check position jump
-        if LastPosition then
-            local dist = (h.Position - LastPosition).Magnitude
-            if dist > 15 then
-                -- Possible rubberband, reduce speed temporarily
-                VelocitySmooth = VelocitySmooth * 0.5
-            end
-        end
-        
-        -- Calculate target velocity
-        local targetSpeed = Settings.NormalSpeed
-        local targetVel = Vector3.new(md.X * targetSpeed, h.AssemblyLinearVelocity.Y, md.Z * targetSpeed)
-        
-        -- Smooth interpolation (Lerp)
-        local smoothFactor = Settings.AntiLag and 0.75 or 0.9
-        VelocitySmooth = VelocitySmooth:Lerp(targetVel, smoothFactor)
-        
-        -- Apply with small randomization to avoid pattern detection
-        local randomOffset = Vector3.new(
-            math.random(-5, 5) * 0.01,
-            0,
-            math.random(-5, 5) * 0.01
-        )
-        
-        h.AssemblyLinearVelocity = VelocitySmooth + randomOffset
-        
-        -- Update position history
-        local currentTime = tick()
-        if currentTime - LastSpeedTime > GetDynamicInterval() then
-            LastSpeedTime = currentTime
-            LastPosition = h.Position
-        end
+        SafeCall(function()
+            local c = LocalPlayer.Character
+            if not c then return end
+            local h = c:FindFirstChild("HumanoidRootPart")
+            local hum = c:FindFirstChildOfClass("Humanoid")
+            if not h or not hum then return end
+            
+            local isStealing = LocalPlayer:GetAttribute("Stealing")
+            if isStealing then return end
+            
+            local md = hum.MoveDirection
+            if md.Magnitude < 0.1 then return end
+            
+            h.AssemblyLinearVelocity = Vector3.new(
+                md.X * Settings.NormalSpeed,
+                h.AssemblyLinearVelocity.Y,
+                md.Z * Settings.NormalSpeed
+            )
+        end)
     end)
 end
 
---// ==================== [11] SMART INVISIBILITY SYSTEM ====================
+local function StopSpeedBoost()
+    if SpeedConnection then
+        SpeedConnection:Disconnect()
+        SpeedConnection = nil
+    end
+end
+
+--// ==================== [11] ORIGINAL INVISIBILITY (ENHANCED) ====================
 
 local InvisibilityConnection = nil
-local LastInvisUpdate = 0
-local FakePosition = nil
-local InvisOffset = Vector3.new(0, 0, 0)
+local LastUpdateTime = 0
 
 local function SendFakePosition(position)
     SafeCall(function()
         local cf = CFrame.new(position)
         
-        -- Try rnet (optional)
         if typeof(rnet) == "table" then
             if rnet.sendphysics then rnet.sendphysics(cf) end
             if rnet.sendposition then rnet.sendposition(position) end
         end
         
-        -- Try delta (optional)
         if typeof(delta) == "table" then
             if delta.sendphysics then delta.sendphysics(cf) end
             if delta.sendposition then delta.sendposition(position) end
-        end
-        
-        -- Fallback: Visual only
-        if sethiddenproperty then
-            sethiddenproperty(LocalPlayer, "SimulationRadius", 0)
         end
     end)
 end
@@ -693,31 +633,6 @@ local function SetDesync(state)
     end)
 end
 
-local function UpdateInvisibility()
-    if not Settings.Invisibility then return end
-    
-    local currentTime = tick()
-    if currentTime - LastInvisUpdate < Settings.InvisUpdateRate then return end
-    LastInvisUpdate = currentTime
-    
-    SafeCall(function()
-        local c = LocalPlayer.Character
-        if not c then return end
-        local h = c:FindFirstChild("HumanoidRootPart")
-        if not h then return end
-        
-        -- Dynamic offset for natural movement
-        InvisOffset = Vector3.new(
-            math.sin(tick() * 1.5) * 1.2,
-            math.sin(tick() * 2.3) * 0.5,
-            math.cos(tick() * 1.8) * 1.2
-        )
-        
-        FakePosition = h.Position + InvisOffset
-        SendFakePosition(FakePosition)
-    end)
-end
-
 local function StartInvisibility()
     SetDesync(true)
     
@@ -726,122 +641,50 @@ local function StartInvisibility()
         if c then
             local h = c:FindFirstChild("HumanoidRootPart")
             if h then
-                FakePosition = h.Position
-                SendFakePosition(FakePosition)
+                SendFakePosition(h.Position)
             end
         end
     end)
     
-    Notify("FR HUB", "الاختفاء مفعل! 🌫", 3)
+    InvisibilityConnection = task.spawn(function()
+        while Settings.Invisibility do
+            local currentTime = tick()
+            if currentTime - LastUpdateTime >= 3 then
+                LastUpdateTime = currentTime
+                
+                SafeCall(function()
+                    local c = LocalPlayer.Character
+                    if not c then return end
+                    local h = c:FindFirstChild("HumanoidRootPart")
+                    if not h then return end
+                    
+                    SendFakePosition(h.Position)
+                end)
+            end
+            task.wait(0.1)
+        end
+    end)
+    
+    Notify("FR HUB", "الاختفاء مفعل! 👻", 3)
 end
 
 local function StopInvisibility()
+    Settings.Invisibility = false
     SetDesync(false)
-    FakePosition = nil
     Notify("FR HUB", "الاختفاء متوقف", 2)
 end
 
---// ==================== [12] INSTA STEAL (CACHED) ====================
-
-local function UpdateInstaSteal()
-    if not Settings.InstaSteal then return end
-    
-    UpdatePromptCache()
-    
-    SafeCall(function()
-        for _, prompt in pairs(CachedPrompts) do
-            if prompt and prompt.Parent then
-                prompt.HoldDuration = 0.01
-                prompt.MaxActivationDistance = 12
-            end
-        end
-    end)
-end
-
---// ==================== [13] UNIFIED MAIN LOOP ====================
-
-local MainLoopConnection = nil
-local LoopCounter = 0
-
-local function StartMainLoop()
-    if MainLoopConnection then return end
-    
-    MainLoopConnection = RunService.Heartbeat:Connect(function()
-        LoopCounter = LoopCounter + 1
-        
-        -- Speed: Every frame
-        if Settings.SpeedBoost then
-            UpdateSpeed()
-        end
-        
-        -- Galaxy: Every frame
-        if Settings.Galaxy then
-            UpdateGalaxy()
-            DoMiniHop()
-        end
-        
-        -- Invisibility: Every 2.5 seconds (controlled by UpdateInvisibility)
-        if Settings.Invisibility then
-            UpdateInvisibility()
-        end
-        
-        -- InstaSteal: Every 10 frames (0.16s at 60fps)
-        if LoopCounter % 10 == 0 and Settings.InstaSteal then
-            UpdateInstaSteal()
-        end
-    end)
-end
-
---// ==================== [14] FAILSAFE SYSTEM ====================
-
-local function ResetSystems()
-    -- Cleanup Galaxy
-    if galaxyVectorForce then
-        galaxyVectorForce:Destroy()
-        galaxyVectorForce = nil
-    end
-    if galaxyAttachment then
-        galaxyAttachment:Destroy()
-        galaxyAttachment = nil
-    end
-    
-    -- Cleanup Invisibility
-    SetDesync(false)
-    
-    -- Reset variables
-    massCalculated = false
-    cachedMass = 0
-    VelocitySmooth = Vector3.new(0, 0, 0)
-    LastPosition = nil
-    CachedPrompts = {}
-end
-
-local function OnCharacterAdded()
-    task.wait(0.5)
-    
-    ResetSystems()
-    
-    -- Re-initialize active systems
-    if Settings.Galaxy then
-        SetupGalaxy()
-    end
-    
-    if Settings.Invisibility then
-        task.delay(1, StartInvisibility)
-    end
-end
-
-LocalPlayer.CharacterAdded:Connect(OnCharacterAdded)
-
---// ==================== [15] CREATE MAIN BUTTONS ====================
+--// ==================== [12] CREATE BUTTONS ====================
 
 local updateInstaSteal, updateGalaxy, updateSpeed, updateInvisibility
 
 updateInstaSteal = CreateToggle("انستا سرقة", Color3.fromRGB(255, 70, 70), "💎", Container, 0, function(on)
     Settings.InstaSteal = on
-    if on then 
-        UpdatePromptCache()
-        Notify("FR HUB", "انستا سرقة مفعل! ⚡", 2) 
+    if on then
+        StartInstaSteal()
+        Notify("FR HUB", "انستا سرقة مفعل! ⚡", 2)
+    else
+        StopInstaSteal()
     end
     SaveSettings()
 end)
@@ -852,7 +695,9 @@ updateGalaxy = CreateToggle("وضع قالكسي", Color3.fromRGB(200, 50, 255),
         SetupGalaxy()
         Notify("FR HUB", "قالكسي شغال! 🚀", 2)
     else
-        ResetSystems()
+        if galaxyVectorForce then galaxyVectorForce:Destroy() end
+        if galaxyAttachment then galaxyAttachment:Destroy() end
+        cachedMass = nil
     end
     SaveSettings()
 end)
@@ -860,7 +705,10 @@ end)
 updateSpeed = CreateToggle("سرعة مضاعفة", Color3.fromRGB(60, 220, 130), "⚡", Container, 76, function(on)
     Settings.SpeedBoost = on
     if on then
+        StartSpeedBoost()
         Notify("FR HUB", "السرعة: " .. Settings.NormalSpeed .. " 🏃", 2)
+    else
+        StopSpeedBoost()
     end
     SaveSettings()
 end)
@@ -875,7 +723,7 @@ updateInvisibility = CreateToggle("الاختفاء الذكي", Color3.fromRGB(
     SaveSettings()
 end)
 
---// ==================== [16] CREATE SETTINGS CONTROLS ====================
+--// ==================== [13] SETTINGS SLIDERS ====================
 
 local updateSpeedSlider = CreateSlider("سرعة الحركة", 20, 100, Settings.NormalSpeed, Color3.fromRGB(60, 220, 130), SettingsContainer, 0, function(value)
     Settings.NormalSpeed = value
@@ -892,13 +740,7 @@ local updateHopSlider = CreateSlider("قوة القفز", 15, 50, Settings.Galax
     SaveSettings()
 end)
 
-local updateAntiLag = CreateToggle("منع اللاق", Color3.fromRGB(100, 180, 255), "🛡", SettingsContainer, 150, function(on)
-    Settings.AntiLag = on
-    Notify("FR HUB", on and "منع اللاق مفعل! 🛡" or "منع اللاق متوقف", 2)
-    SaveSettings()
-end)
-
---// ==================== [17] SETTINGS PANEL TOGGLE ====================
+--// ==================== [14] SETTINGS TOGGLE ====================
 
 SettingsBtn.MouseButton1Click:Connect(function()
     Settings.SettingsVisible = not Settings.SettingsVisible
@@ -921,7 +763,7 @@ SettingsBtn.MouseButton1Click:Connect(function()
     SaveSettings()
 end)
 
---// ==================== [18] MINIMIZE FUNCTION ====================
+--// ==================== [15] MINIMIZE ====================
 
 MinimizeBtn.MouseButton1Click:Connect(function()
     Settings.Minimized = not Settings.Minimized
@@ -947,7 +789,7 @@ MinimizeBtn.MouseButton1Click:Connect(function()
     SaveSettings()
 end)
 
---// ==================== [19] INPUT HANDLING ====================
+--// ==================== [16] INPUT ====================
 
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
@@ -969,29 +811,68 @@ UserInputService.InputBegan:Connect(function(input, gpe)
     end
 end)
 
---// ==================== [20] START SYSTEMS ====================
+--// ==================== [17] MAIN LOOP (GALAXY ONLY) ====================
 
-StartMainLoop()
+RunService.Heartbeat:Connect(function()
+    if Settings.Galaxy then
+        UpdateGalaxy()
+        DoMiniHop()
+    end
+end)
 
---// ==================== [21] AUTO LOAD ====================
+--// ==================== [18] CHARACTER RESET ====================
 
-if Settings.InstaSteal then updateInstaSteal(true, true) end
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    
+    SafeCall(function()
+        if galaxyVectorForce then galaxyVectorForce:Destroy() end
+        if galaxyAttachment then galaxyAttachment:Destroy() end
+        galaxyVectorForce = nil
+        galaxyAttachment = nil
+        cachedMass = nil
+    end)
+    
+    if Settings.Galaxy then
+        SetupGalaxy()
+    end
+    
+    if Settings.Invisibility then
+        task.delay(1, function()
+            StartInvisibility()
+        end)
+    end
+end)
+
+--// ==================== [19] AUTO LOAD ====================
+
+if Settings.InstaSteal then 
+    updateInstaSteal(true, true)
+    StartInstaSteal()
+end
+
 if Settings.Galaxy then 
     updateGalaxy(true, true)
     SetupGalaxy()
 end
-if Settings.SpeedBoost then updateSpeed(true, true) end
+
+if Settings.SpeedBoost then 
+    updateSpeed(true, true)
+    StartSpeedBoost()
+end
+
 if Settings.Invisibility then 
     updateInvisibility(true, true)
-    task.delay(1, StartInvisibility)
+    task.delay(1, function()
+        StartInvisibility()
+    end)
 end
-if Settings.AntiLag ~= nil then updateAntiLag(Settings.AntiLag, true) end
 
 updateSpeedSlider(Settings.NormalSpeed)
 updateGravitySlider(Settings.GalaxyGravityPercent)
 updateHopSlider(Settings.GalaxyHopPower)
 
---// ==================== [22] ANIMATED BORDER ====================
+--// ==================== [20] BORDER ANIMATION ====================
 
 task.spawn(function()
     local t = 0
@@ -1011,9 +892,8 @@ end)
 
 --// ==================== [DONE] ====================
 
-Notify("FR HUB V13", "تم التحميل بنجاح! 🚀", 4)
-print("=== FR HUB V13 Pro Loaded ===")
-print("✓ Unified Loop System")
-print("✓ Anti-Rubberband Speed")
-print("✓ Smart Cache")
-print("✓ FailSafe Protection")
+Notify("FR HUB V14", "تم التحميل بنجاح! ✨", 4)
+print("=== FR HUB V14 Classic Loaded ===")
+print("✓ Original InstaSteal (No Cache)")
+print("✓ Original Invisibility (3s Update)")
+print("✓ All Errors Fixed")
