@@ -1,5 +1,5 @@
--- FR HUB V12 - Fixed Edition
--- Features: Insta Steal, Galaxy (Fixed), Speed Boost, Invisibility (Improved), Lift/Drop
+-- FR HUB V13 - Final Edition
+-- Features: Insta Steal, Galaxy, Invisibility (Speed 35/20), Desync
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
@@ -13,17 +13,15 @@ local Workspace = game:GetService("Workspace")
 --// ==================== [1] Configuration ====================
 
 local Settings = {
-    NormalSpeed = 40,
-    StealSpeed = 23,
+    NormalSpeed = 35,  -- Invisibility normal speed
+    StealSpeed = 20,   -- Invisibility steal speed
     GalaxyGravityPercent = 40,
     GalaxyHopPower = 25,
     GalaxyHopCooldown = 0.08,
     DesyncEnabled = false,
     Galaxy = false,
     InstaSteal = false,
-    SpeedBoost = false,
     Invisibility = false,
-    LiftDrop = false,
     Minimized = false
 }
 
@@ -41,25 +39,25 @@ local function Notify(title, text, duration)
     end)
 end
 
-if _G.FRHUB_V12_LOADED then
+if _G.FRHUB_V13_LOADED then
     Notify("FR HUB", "السكربت محمل بالفعل!", 3)
     return
 end
-_G.FRHUB_V12_LOADED = true
+_G.FRHUB_V13_LOADED = true
 
 --// ==================== [3] Save/Load Settings ====================
 
 local function SaveSettings()
     pcall(function()
         local jsonString = HttpService:JSONEncode(Settings)
-        writefile("FRHUB_V12_Config.json", jsonString)
+        writefile("FRHUB_V13_Config.json", jsonString)
     end)
 end
 
 local function LoadSettings()
     pcall(function()
-        if isfile("FRHUB_V12_Config.json") then
-            local jsonString = readfile("FRHUB_V12_Config.json")
+        if isfile("FRHUB_V13_Config.json") then
+            local jsonString = readfile("FRHUB_V13_Config.json")
             local loaded = HttpService:JSONDecode(jsonString)
             for k, v in pairs(loaded) do
                 if Settings[k] ~= nil then
@@ -75,15 +73,15 @@ LoadSettings()
 --// ==================== [4] Screen GUI ====================
 
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "FRHUB_V12_Fixed"
+ScreenGui.Name = "FRHUB_V13_Final"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
---// Main Frame
+--// Main Frame - Smaller (4 buttons only)
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 260, 0, 320)
+MainFrame.Size = UDim2.new(0, 260, 0, 240)  -- Smaller height
 MainFrame.Position = UDim2.new(0.02, 0, 0.3, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 MainFrame.BackgroundTransparency = 0.1
@@ -118,7 +116,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -80, 1, 0)
 Title.Position = UDim2.new(0, 12, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "FR HUB | V12"
+Title.Text = "FR HUB | V13"
 Title.TextColor3 = Color3.fromRGB(0, 200, 255)
 Title.TextSize = 16
 Title.Font = Enum.Font.GothamBold
@@ -153,17 +151,17 @@ SettingsBtn.Parent = Header
 
 Instance.new("UICorner", SettingsBtn).CornerRadius = UDim.new(0, 6)
 
---// FIXED: Settings Panel - Appears to the LEFT of main frame (outside)
+--// FIXED: Settings Panel - Appears to the RIGHT of main frame (يمين القايمة)
 local SettingsPanel = Instance.new("Frame")
 SettingsPanel.Name = "SettingsPanel"
-SettingsPanel.Size = UDim2.new(0, 180, 0, 150)
-SettingsPanel.Position = UDim2.new(0, -190, 0, 45)  -- LEFT of main frame
+SettingsPanel.Size = UDim2.new(0, 180, 0, 140)
+SettingsPanel.Position = UDim2.new(1, 10, 0, 45)  -- RIGHT of main frame (positive X offset)
 SettingsPanel.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 SettingsPanel.BackgroundTransparency = 0.05
 SettingsPanel.BorderSizePixel = 0
 SettingsPanel.Visible = false
-SettingsPanel.ZIndex = 100
-SettingsPanel.Parent = MainFrame  -- Parent to MainFrame but positioned outside
+SettingsPanel.ZIndex = 1000  -- High ZIndex to ensure visibility
+SettingsPanel.Parent = MainFrame
 
 Instance.new("UICorner", SettingsPanel).CornerRadius = UDim.new(0, 10)
 
@@ -185,13 +183,13 @@ SettingsTitle.Parent = SettingsPanel
 --// Speed Settings
 local function CreateSpeedSetting(name, default, yPos, callback)
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(1, -20, 0, 40)
+    frame.Size = UDim2.new(1, -20, 0, 35)
     frame.Position = UDim2.new(0, 10, 0, yPos)
     frame.BackgroundTransparency = 1
     frame.Parent = SettingsPanel
     
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 0, 18)
+    label.Size = UDim2.new(1, 0, 0, 16)
     label.BackgroundTransparency = 1
     label.Text = name
     label.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -201,8 +199,8 @@ local function CreateSpeedSetting(name, default, yPos, callback)
     label.Parent = frame
     
     local input = Instance.new("TextBox")
-    input.Size = UDim2.new(0, 50, 0, 22)
-    input.Position = UDim2.new(0, 0, 0, 18)
+    input.Size = UDim2.new(0, 50, 0, 20)
+    input.Position = UDim2.new(0, 0, 0, 16)
     input.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
     input.Text = tostring(default)
     input.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -231,12 +229,12 @@ CreateSpeedSetting("سرعة عادية:", Settings.NormalSpeed, 35, function(v)
     Notify("FR HUB", "السرعة العادية: " .. v, 2)
 end)
 
-CreateSpeedSetting("سرقة:", Settings.StealSpeed, 80, function(v)
+CreateSpeedSetting("سرعة سرقة:", Settings.StealSpeed, 75, function(v)
     Settings.StealSpeed = v
     Notify("FR HUB", "سرعة السرقة: " .. v, 2)
 end)
 
-CreateSpeedSetting("جاذبية %:", Settings.GalaxyGravityPercent, 125, function(v)
+CreateSpeedSetting("جاذبية %:", Settings.GalaxyGravityPercent, 115, function(v)
     Settings.GalaxyGravityPercent = math.clamp(v, 10, 80)
     Notify("FR HUB", "جاذبية قالكسي: " .. v .. "%", 2)
 end)
@@ -245,6 +243,7 @@ end)
 SettingsBtn.MouseButton1Click:Connect(function()
     SettingsPanel.Visible = not SettingsPanel.Visible
     SettingsBtn.TextColor3 = SettingsPanel.Visible and Color3.fromRGB(0, 255, 150) or Color3.fromRGB(255, 200, 100)
+    print("Settings panel visible:", SettingsPanel.Visible)
 end)
 
 --// Container
@@ -291,7 +290,7 @@ end)
 local function CreateButton(name, color, icon, yPos, callback)
     local btn = Instance.new("TextButton")
     btn.Name = name .. "Btn"
-    btn.Size = UDim2.new(0.96, 0, 0, 40)
+    btn.Size = UDim2.new(0.96, 0, 0, 42)
     btn.Position = UDim2.new(0.02, 0, 0, yPos)
     btn.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
     btn.Text = ""
@@ -418,7 +417,7 @@ end
 
 StartInstaStealSystem()
 
---// ==================== [8] Galaxy Mode - FIXED ====================
+--// ==================== [8] Galaxy Mode ====================
 
 local galaxyVectorForce = nil
 local galaxyAttachment = nil
@@ -484,46 +483,7 @@ local function doMiniHop()
     end)
 end
 
---// ==================== [9] Speed Boost System ====================
-
-local SpeedConnection = nil
-
-local function StartSpeedBoost()
-    if SpeedConnection then return end
-    
-    SpeedConnection = RunService.Heartbeat:Connect(function()
-        if not Settings.SpeedBoost then return end
-        
-        pcall(function()
-            local c = LocalPlayer.Character
-            if not c then return end
-            local h = c:FindFirstChild("HumanoidRootPart")
-            local hum = c:FindFirstChildOfClass("Humanoid")
-            if not h or not hum then return end
-            
-            local isStealing = LocalPlayer:GetAttribute("Stealing")
-            if isStealing then return end
-            
-            local md = hum.MoveDirection
-            if md.Magnitude > 0.1 then
-                h.AssemblyLinearVelocity = Vector3.new(
-                    md.X * Settings.NormalSpeed,
-                    h.AssemblyLinearVelocity.Y,
-                    md.Z * Settings.NormalSpeed
-                )
-            end
-        end)
-    end)
-end
-
-local function StopSpeedBoost()
-    if SpeedConnection then
-        SpeedConnection:Disconnect()
-        SpeedConnection = nil
-    end
-end
-
---// ==================== [10] IMPROVED Invisibility System ====================
+--// ==================== [9] IMPROVED Invisibility System (Speed 35/20) ====================
 
 local InvisibilityConnection = nil
 local LastUpdateTime = 0
@@ -617,59 +577,9 @@ local function StopInvisibility()
     Notify("FR HUB", "الاختفاء متوقف", 2)
 end
 
---// ==================== [11] NEW: Lift/Drop System ====================
+--// ==================== [10] Create Buttons (4 buttons only) ====================
 
-local LiftDropConnection = nil
-local IsLifted = false
-
-local function StartLiftDrop()
-    if LiftDropConnection then return end
-    
-    LiftDropConnection = RunService.Heartbeat:Connect(function()
-        if not Settings.LiftDrop then return end
-        
-        pcall(function()
-            local c = LocalPlayer.Character
-            if not c then return end
-            local h = c:FindFirstChild("HumanoidRootPart")
-            if not h then return end
-            
-            local currentPos = h.Position
-            local groundY = 3.5  -- Approximate ground level
-            local liftHeight = 5
-            
-            if not IsLifted then
-                -- Lift up to height 5
-                if currentPos.Y < liftHeight then
-                    h.AssemblyLinearVelocity = Vector3.new(0, 100, 0)  -- Fast lift
-                else
-                    IsLifted = true
-                end
-            else
-                -- Drop down at speed 100
-                if currentPos.Y > groundY then
-                    h.AssemblyLinearVelocity = Vector3.new(0, -100, 0)  -- Fast drop
-                else
-                    -- Reset when reached ground
-                    IsLifted = false
-                    Settings.LiftDrop = false
-                end
-            end
-        end)
-    end)
-end
-
-local function StopLiftDrop()
-    if LiftDropConnection then
-        LiftDropConnection:Disconnect()
-        LiftDropConnection = nil
-    end
-    IsLifted = false
-end
-
---// ==================== [12] Create Buttons ====================
-
-local updateInstaSteal, updateGalaxy, updateSpeed, updateInvisibility, updateLiftDrop, updateDesync
+local updateInstaSteal, updateGalaxy, updateInvisibility, updateDesync
 
 -- Insta Steal Button
 updateInstaSteal = CreateButton("انستا سرقة", Color3.fromRGB(255, 80, 80), "💎", 5, function(on)
@@ -681,7 +591,7 @@ updateInstaSteal = CreateButton("انستا سرقة", Color3.fromRGB(255, 80, 8
 end)
 
 -- Galaxy Mode Button
-updateGalaxy = CreateButton("وضع قالكسي", Color3.fromRGB(255, 0, 255), "🌌", 50, function(on)
+updateGalaxy = CreateButton("وضع قالكسي", Color3.fromRGB(255, 0, 255), "🌌", 52, function(on)
     Settings.Galaxy = on
     if on then
         setupGalaxy()
@@ -700,43 +610,20 @@ updateGalaxy = CreateButton("وضع قالكسي", Color3.fromRGB(255, 0, 255), 
     SaveSettings()
 end)
 
--- Speed Boost Button
-updateSpeed = CreateButton("سرعة مضاعفة", Color3.fromRGB(70, 225, 145), "⚡", 95, function(on)
-    Settings.SpeedBoost = on
-    if on then
-        StartSpeedBoost()
-        Notify("FR HUB", "السرعة: " .. Settings.NormalSpeed, 2)
-    else
-        StopSpeedBoost()
-    end
-    SaveSettings()
-end)
-
 -- Invisibility Button
-updateInvisibility = CreateButton("الاختفاء الذكي", Color3.fromRGB(255, 150, 50), "👻", 140, function(on)
+updateInvisibility = CreateButton("الاختفاء الذكي", Color3.fromRGB(255, 150, 50), "👻", 99, function(on)
     Settings.Invisibility = on
     if on then
         StartInvisibility()
+        Notify("FR HUB", "الاختفاء: سرعة عادية=35, سرقة=20", 3)
     else
         StopInvisibility()
     end
     SaveSettings()
 end)
 
--- NEW: Lift/Drop Button
-updateLiftDrop = CreateButton("رفع واسقاط", Color3.fromRGB(100, 200, 255), "⬆️", 185, function(on)
-    Settings.LiftDrop = on
-    if on then
-        StartLiftDrop()
-        Notify("FR HUB", "رفع واسقاط مفعل!", 2)
-    else
-        StopLiftDrop()
-    end
-    SaveSettings()
-end)
-
 -- Desync Toggle Button
-updateDesync = CreateButton("تفعيل الديسينك", Color3.fromRGB(255, 50, 50), "🔒", 230, function(on)
+updateDesync = CreateButton("تفعيل الديسينك", Color3.fromRGB(255, 50, 50), "🔒", 146, function(on)
     Settings.DesyncEnabled = on
     if on then
         SetDesync(true)
@@ -748,7 +635,7 @@ updateDesync = CreateButton("تفعيل الديسينك", Color3.fromRGB(255, 5
     SaveSettings()
 end)
 
---// ==================== [13] Input Handling ====================
+--// ==================== [11] Input Handling ====================
 
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
@@ -763,7 +650,7 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
---// ==================== [14] Main Loops ====================
+--// ==================== [12] Main Loops ====================
 
 RunService.Heartbeat:Connect(function()
     if Settings.Galaxy then
@@ -784,7 +671,6 @@ LocalPlayer.CharacterAdded:Connect(function()
     end)
     
     if Settings.Galaxy then setupGalaxy() end
-    if Settings.SpeedBoost then StartSpeedBoost() end
     if Settings.Invisibility then 
         task.delay(1, function()
             StartInvisibility()
@@ -811,7 +697,7 @@ MinimizeBtn.MouseButton1Click:Connect(function()
         SettingsPanel.Visible = false
     else
         MinimizeBtn.Text = "-"
-        TweenService:Create(MainFrame, TweenInfo.new(0.3), {Size = UDim2.new(0, 260, 0, 320)}):Play()
+        TweenService:Create(MainFrame, TweenInfo.new(0.3), {Size = UDim2.new(0, 260, 0, 240)}):Play()
         for _, el in ipairs(UIElements) do
             el.Visible = true
         end
@@ -822,10 +708,6 @@ end)
 --// Auto Load
 if Settings.InstaSteal then updateInstaSteal(true) end
 if Settings.Galaxy then updateGalaxy(true) end
-if Settings.SpeedBoost then 
-    updateSpeed(true)
-    StartSpeedBoost()
-end
 if Settings.Invisibility then 
     updateInvisibility(true)
     task.delay(1, function()
@@ -845,5 +727,5 @@ task.spawn(function()
     end
 end)
 
-Notify("FR HUB V12", "تم التحميل بنجاح! ✓", 4)
-print("FR HUB V12 Loaded - All features fixed and improved")
+Notify("FR HUB V13", "تم التحميل بنجاح! ✓", 4)
+print("FR HUB V13 Loaded - 4 buttons, Settings on RIGHT side")
