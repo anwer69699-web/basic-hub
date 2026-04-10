@@ -1,30 +1,30 @@
---// FR HUB V13 - ADVANCED EDITION
+--// FR HUB V13 SAFE (NO ERRORS VERSION)
+
+--// ================= SAFE LOAD =================
+repeat task.wait() until game:IsLoaded()
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
-local UIS = game:GetService("UserInputService")
+repeat task.wait() until LocalPlayer
+
 local RunService = game:GetService("RunService")
-local HttpService = game:GetService("HttpService")
+local UIS = game:GetService("UserInputService")
 local StarterGui = game:GetService("StarterGui")
 
 --// ================= SETTINGS =================
-
 local Settings = {
-NormalSpeed = 60,
+NormalSpeed = 35,
 StealSpeed = 25,
 SpeedBoost = false,
 Invisibility = false,
-InstaSteal = false,
-Galaxy = false,
-Desync = false
+InstaSteal = false
 }
 
 --// ================= NOTIFY =================
-
 local function Notify(msg)
 pcall(function()
 StarterGui:SetCore("SendNotification", {
-Title = "FR HUB V13",
+Title = "FR HUB",
 Text = msg,
 Duration = 3
 })
@@ -32,17 +32,16 @@ end)
 end
 
 --// ================= GUI =================
-
-local gui = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
-gui.Name = "FRHUB_V13"
+local gui = Instance.new("ScreenGui")
+gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local main = Instance.new("Frame", gui)
-main.Size = UDim2.new(0, 270, 0, 330)
+main.Size = UDim2.new(0, 260, 0, 260)
 main.Position = UDim2.new(0.02,0,0.3,0)
 main.BackgroundColor3 = Color3.fromRGB(20,20,25)
 Instance.new("UICorner", main)
 
---// NORMAL SPEED BOX
+--// NORMAL SPEED
 local normalBox = Instance.new("TextBox", main)
 normalBox.Size = UDim2.new(0.9,0,0,35)
 normalBox.Position = UDim2.new(0.05,0,0,10)
@@ -56,12 +55,12 @@ normalBox.FocusLost:Connect(function()
 local v = tonumber(normalBox.Text)
 if v then
 Settings.NormalSpeed = math.clamp(v,20,120)
-normalBox.Text = Settings.NormalSpeed
-Notify("Normal Speed "..v)
+normalBox.Text = tostring(Settings.NormalSpeed)
+Notify("Normal Speed: "..v)
 end
 end)
 
---// STEAL SPEED BOX
+--// STEAL SPEED
 local stealBox = Instance.new("TextBox", main)
 stealBox.Size = UDim2.new(0.9,0,0,35)
 stealBox.Position = UDim2.new(0.05,0,0,50)
@@ -75,12 +74,12 @@ stealBox.FocusLost:Connect(function()
 local v = tonumber(stealBox.Text)
 if v then
 Settings.StealSpeed = math.clamp(v,10,100)
-stealBox.Text = Settings.StealSpeed
-Notify("Steal Speed "..v)
+stealBox.Text = tostring(Settings.StealSpeed)
+Notify("Steal Speed: "..v)
 end
 end)
 
---// BUTTON CREATOR
+--// BUTTON
 local function Btn(txt, y, cb)
 local b = Instance.new("TextButton", main)
 b.Size = UDim2.new(0.9,0,0,35)
@@ -102,7 +101,6 @@ end)
 end
 
 --// ================= SPEED SYSTEM =================
-
 RunService.Heartbeat:Connect(function()
 if not Settings.SpeedBoost then return end
 
@@ -128,61 +126,32 @@ local target = Vector3.new(
     dir.Z * speed
 )
 
--- Smooth + Anti Lag
 h.AssemblyLinearVelocity = current:Lerp(target, 0.25)
-
--- Anti Rubberband
-if current.Magnitude > speed * 2 then
-    h.AssemblyLinearVelocity *= 0.8
-end
 ```
 
 end)
 
---// ================= SMART INVIS =================
-
-local last = 0
-
-local function interval()
-if Settings.NormalSpeed >= 80 then return 0.08 end
-if Settings.NormalSpeed >= 50 then return 0.15 end
-return 0.3
-end
-
+--// ================= SIMPLE INVIS =================
 RunService.Heartbeat:Connect(function()
 if not Settings.Invisibility then return end
 
 ```
-if tick() - last < interval() then return end
-last = tick()
-
 local c = LocalPlayer.Character
 if not c then return end
 
-local h = c:FindFirstChild("HumanoidRootPart")
-if not h then return end
-
-local offset = Vector3.new(
-    math.sin(tick()*2)*2,
-    0,
-    math.cos(tick()*2)*2
-)
-
-local fake = h.Position + offset
-
-if rnet and rnet.sendposition then
-    pcall(function()
-        rnet.sendposition(fake)
-    end)
+for _,v in pairs(c:GetDescendants()) do
+    if v:IsA("BasePart") then
+        v.Transparency = 0.6
+        v.CanCollide = false
+    end
 end
 ```
 
 end)
 
 --// ================= INSTA STEAL =================
-
 task.spawn(function()
-while task.wait(0.1) do
+while task.wait(0.2) do
 if not Settings.InstaSteal then continue end
 for _,v in pairs(workspace:GetDescendants()) do
 if v:IsA("ProximityPrompt") then
@@ -193,11 +162,8 @@ end
 end)
 
 --// ================= BUTTONS =================
-
 Btn("Speed Boost", 100, function(v) Settings.SpeedBoost = v end)
-Btn("Smart Invis", 140, function(v) Settings.Invisibility = v end)
+Btn("Invisibility", 140, function(v) Settings.Invisibility = v end)
 Btn("Insta Steal", 180, function(v) Settings.InstaSteal = v end)
-Btn("Galaxy Mode", 220, function(v) Settings.Galaxy = v end)
-Btn("Desync", 260, function(v) Settings.Desync = v end)
 
-Notify("V13 Loaded Successfully")
+Notify("FR HUB SAFE LOADED")
