@@ -1,169 +1,93 @@
---// FR HUB V13 SAFE (NO ERRORS VERSION)
+--// FR HUB V13 LITE (ULTRA STABLE)
 
---// ================= SAFE LOAD =================
 repeat task.wait() until game:IsLoaded()
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
-repeat task.wait() until LocalPlayer
 
-local RunService = game:GetService("RunService")
-local UIS = game:GetService("UserInputService")
-local StarterGui = game:GetService("StarterGui")
+--// SETTINGS
+local NormalSpeed = 40
+local StealSpeed = 25
 
---// ================= SETTINGS =================
-local Settings = {
-NormalSpeed = 35,
-StealSpeed = 25,
-SpeedBoost = false,
-Invisibility = false,
-InstaSteal = false
-}
+local SpeedOn = false
+local StealMode = false
 
---// ================= NOTIFY =================
-local function Notify(msg)
-pcall(function()
-StarterGui:SetCore("SendNotification", {
-Title = "FR HUB",
-Text = msg,
-Duration = 3
-})
-end)
-end
+--// GUI
+local gui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
 
---// ================= GUI =================
-local gui = Instance.new("ScreenGui")
-gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+local frame = Instance.new("Frame", gui)
+frame.Size = UDim2.new(0,200,0,200)
+frame.Position = UDim2.new(0.02,0,0.3,0)
+frame.BackgroundColor3 = Color3.fromRGB(25,25,25)
 
-local main = Instance.new("Frame", gui)
-main.Size = UDim2.new(0, 260, 0, 260)
-main.Position = UDim2.new(0.02,0,0.3,0)
-main.BackgroundColor3 = Color3.fromRGB(20,20,25)
-Instance.new("UICorner", main)
-
---// NORMAL SPEED
-local normalBox = Instance.new("TextBox", main)
-normalBox.Size = UDim2.new(0.9,0,0,35)
-normalBox.Position = UDim2.new(0.05,0,0,10)
-normalBox.Text = tostring(Settings.NormalSpeed)
+--// NORMAL SPEED BOX
+local normalBox = Instance.new("TextBox", frame)
+normalBox.Size = UDim2.new(1,0,0,30)
+normalBox.Position = UDim2.new(0,0,0,0)
+normalBox.Text = tostring(NormalSpeed)
 normalBox.PlaceholderText = "Normal Speed"
-normalBox.BackgroundColor3 = Color3.fromRGB(35,35,45)
-normalBox.TextColor3 = Color3.new(1,1,1)
-Instance.new("UICorner", normalBox)
 
 normalBox.FocusLost:Connect(function()
 local v = tonumber(normalBox.Text)
 if v then
-Settings.NormalSpeed = math.clamp(v,20,120)
-normalBox.Text = tostring(Settings.NormalSpeed)
-Notify("Normal Speed: "..v)
+NormalSpeed = math.clamp(v,16,100)
 end
 end)
 
---// STEAL SPEED
-local stealBox = Instance.new("TextBox", main)
-stealBox.Size = UDim2.new(0.9,0,0,35)
-stealBox.Position = UDim2.new(0.05,0,0,50)
-stealBox.Text = tostring(Settings.StealSpeed)
+--// STEAL SPEED BOX
+local stealBox = Instance.new("TextBox", frame)
+stealBox.Size = UDim2.new(1,0,0,30)
+stealBox.Position = UDim2.new(0,0,0,35)
+stealBox.Text = tostring(StealSpeed)
 stealBox.PlaceholderText = "Steal Speed"
-stealBox.BackgroundColor3 = Color3.fromRGB(35,35,45)
-stealBox.TextColor3 = Color3.new(1,1,1)
-Instance.new("UICorner", stealBox)
 
 stealBox.FocusLost:Connect(function()
 local v = tonumber(stealBox.Text)
 if v then
-Settings.StealSpeed = math.clamp(v,10,100)
-stealBox.Text = tostring(Settings.StealSpeed)
-Notify("Steal Speed: "..v)
+StealSpeed = math.clamp(v,10,60)
 end
 end)
 
---// BUTTON
-local function Btn(txt, y, cb)
-local b = Instance.new("TextButton", main)
-b.Size = UDim2.new(0.9,0,0,35)
-b.Position = UDim2.new(0.05,0,0,y)
-b.Text = txt.." : OFF"
-b.BackgroundColor3 = Color3.fromRGB(40,40,50)
-b.TextColor3 = Color3.new(1,1,1)
-Instance.new("UICorner", b)
+--// SPEED BUTTON
+local speedBtn = Instance.new("TextButton", frame)
+speedBtn.Size = UDim2.new(1,0,0,30)
+speedBtn.Position = UDim2.new(0,0,0,80)
+speedBtn.Text = "Speed OFF"
 
-```
-local state = false
-b.MouseButton1Click:Connect(function()
-    state = not state
-    b.Text = txt.." : "..(state and "ON" or "OFF")
-    cb(state)
-end)
-```
-
-end
-
---// ================= SPEED SYSTEM =================
-RunService.Heartbeat:Connect(function()
-if not Settings.SpeedBoost then return end
-
-```
-local c = LocalPlayer.Character
-if not c then return end
-
-local h = c:FindFirstChild("HumanoidRootPart")
-local hum = c:FindFirstChildOfClass("Humanoid")
-if not h or not hum then return end
-
-local dir = hum.MoveDirection
-if dir.Magnitude <= 0 then return end
-
-local isStealing = LocalPlayer:GetAttribute("Stealing")
-local speed = isStealing and Settings.StealSpeed or Settings.NormalSpeed
-
-local current = h.AssemblyLinearVelocity
-
-local target = Vector3.new(
-    dir.X * speed,
-    current.Y,
-    dir.Z * speed
-)
-
-h.AssemblyLinearVelocity = current:Lerp(target, 0.25)
-```
-
+speedBtn.MouseButton1Click:Connect(function()
+SpeedOn = not SpeedOn
+speedBtn.Text = SpeedOn and "Speed ON" or "Speed OFF"
 end)
 
---// ================= SIMPLE INVIS =================
-RunService.Heartbeat:Connect(function()
-if not Settings.Invisibility then return end
+--// STEAL BUTTON
+local stealBtn = Instance.new("TextButton", frame)
+stealBtn.Size = UDim2.new(1,0,0,30)
+stealBtn.Position = UDim2.new(0,0,0,115)
+stealBtn.Text = "Steal Mode OFF"
+
+stealBtn.MouseButton1Click:Connect(function()
+StealMode = not StealMode
+stealBtn.Text = StealMode and "Steal Mode ON" or "Steal Mode OFF"
+end)
+
+--// MAIN LOOP (خفيف جداً)
+task.spawn(function()
+while task.wait(0.3) do
+if not SpeedOn then continue end
 
 ```
-local c = LocalPlayer.Character
-if not c then return end
+    local char = LocalPlayer.Character
+    if not char then continue end
 
-for _,v in pairs(c:GetDescendants()) do
-    if v:IsA("BasePart") then
-        v.Transparency = 0.6
-        v.CanCollide = false
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then continue end
+
+    if StealMode then
+        hum.WalkSpeed = StealSpeed
+    else
+        hum.WalkSpeed = NormalSpeed
     end
 end
 ```
 
 end)
-
---// ================= INSTA STEAL =================
-task.spawn(function()
-while task.wait(0.2) do
-if not Settings.InstaSteal then continue end
-for _,v in pairs(workspace:GetDescendants()) do
-if v:IsA("ProximityPrompt") then
-v.HoldDuration = 0
-end
-end
-end
-end)
-
---// ================= BUTTONS =================
-Btn("Speed Boost", 100, function(v) Settings.SpeedBoost = v end)
-Btn("Invisibility", 140, function(v) Settings.Invisibility = v end)
-Btn("Insta Steal", 180, function(v) Settings.InstaSteal = v end)
-
-Notify("FR HUB SAFE LOADED")
