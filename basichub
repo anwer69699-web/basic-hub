@@ -1,93 +1,1019 @@
---// FR HUB V13 LITE (ULTRA STABLE)
-
-repeat task.wait() until game:IsLoaded()
+-- FR HUB V13 - Pro Optimized Edition
+-- Features: Unified Loop, Anti-Rubberband, Smart Cache, FailSafe, Dynamic Updates
+-- Optimized for: Performance + Stability + Low Detection
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+local StarterGui = game:GetService("StarterGui")
+local Workspace = game:GetService("Workspace")
 
---// SETTINGS
-local NormalSpeed = 40
-local StealSpeed = 25
+--// ==================== [1] SAFE EXECUTION WRAPPER ====================
 
-local SpeedOn = false
-local StealMode = false
-
---// GUI
-local gui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
-
-local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0,200,0,200)
-frame.Position = UDim2.new(0.02,0,0.3,0)
-frame.BackgroundColor3 = Color3.fromRGB(25,25,25)
-
---// NORMAL SPEED BOX
-local normalBox = Instance.new("TextBox", frame)
-normalBox.Size = UDim2.new(1,0,0,30)
-normalBox.Position = UDim2.new(0,0,0,0)
-normalBox.Text = tostring(NormalSpeed)
-normalBox.PlaceholderText = "Normal Speed"
-
-normalBox.FocusLost:Connect(function()
-local v = tonumber(normalBox.Text)
-if v then
-NormalSpeed = math.clamp(v,16,100)
+local function SafeCall(func, ...)
+    local success, result = pcall(func, ...)
+    if not success then
+        warn("[FR HUB] Error: " .. tostring(result))
+    end
+    return success, result
 end
-end)
 
---// STEAL SPEED BOX
-local stealBox = Instance.new("TextBox", frame)
-stealBox.Size = UDim2.new(1,0,0,30)
-stealBox.Position = UDim2.new(0,0,0,35)
-stealBox.Text = tostring(StealSpeed)
-stealBox.PlaceholderText = "Steal Speed"
+--// ==================== [2] CONFIGURATION ====================
 
-stealBox.FocusLost:Connect(function()
-local v = tonumber(stealBox.Text)
-if v then
-StealSpeed = math.clamp(v,10,60)
+local Settings = {
+    NormalSpeed = 35,
+    StealSpeed = 25,
+    GalaxyGravityPercent = 35,
+    GalaxyHopPower = 28,
+    GalaxyHopCooldown = 0.05,
+    InstaSteal = false,
+    Galaxy = false,
+    SpeedBoost = false,
+    Invisibility = false,
+    Minimized = false,
+    SettingsVisible = false,
+    AntiLag = true,
+    InvisUpdateRate = 2.5
+}
+
+--// ==================== [3] NOTIFICATION SYSTEM ====================
+
+local function Notify(title, text, duration)
+    duration = duration or 3
+    SafeCall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = title,
+            Text = text,
+            Duration = duration,
+            Icon = "rbxassetid://9079992154"
+        })
+    end)
 end
+
+if _G.FRHUB_V13_LOADED then
+    Notify("FR HUB", "السكربت محمل بالفعل!", 3)
+    return
+end
+_G.FRHUB_V13_LOADED = true
+
+--// ==================== [4] SAVE/LOAD SETTINGS ====================
+
+local function SaveSettings()
+    SafeCall(function()
+        writefile("FRHUB_V13_Config.json", HttpService:JSONEncode(Settings))
+    end)
+end
+
+local function LoadSettings()
+    SafeCall(function()
+        if isfile("FRHUB_V13_Config.json") then
+            local loaded = HttpService:JSONDecode(readfile("FRHUB_V13_Config.json"))
+            for k, v in pairs(loaded) do
+                if Settings[k] ~= nil then
+                    Settings[k] = v
+                end
+            end
+        end
+    end)
+end
+
+LoadSettings()
+
+--// ==================== [5] SCREEN GUI - COMPACT DESIGN ====================
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "FRHUB_V13_Pro"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+-- Main Frame
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 200, 0, 180)
+MainFrame.Position = UDim2.new(0.02, 0, 0.3, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 16)
+MainFrame.BackgroundTransparency = 0.08
+MainFrame.BorderSizePixel = 0
+MainFrame.ClipsDescendants = true
+MainFrame.Active = true
+MainFrame.Parent = ScreenGui
+
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
+
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Thickness = 1.5
+MainStroke.Color = Color3.fromRGB(0, 150, 255)
+MainStroke.Transparency = 0.25
+MainStroke.Parent = MainFrame
+
+-- Header
+local Header = Instance.new("Frame")
+Header.Size = UDim2.new(1, 0, 0, 32)
+Header.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+Header.BorderSizePixel = 0
+Header.Parent = MainFrame
+
+Instance.new("UICorner", Header).CornerRadius = UDim.new(0, 10)
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -70, 1, 0)
+Title.Position = UDim2.new(0, 10, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "FR HUB | V13"
+Title.TextColor3 = Color3.fromRGB(0, 200, 255)
+Title.TextSize = 13
+Title.Font = Enum.Font.GothamBold
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = Header
+
+-- Settings Button
+local SettingsBtn = Instance.new("TextButton")
+SettingsBtn.Size = UDim2.new(0, 24, 0, 24)
+SettingsBtn.Position = UDim2.new(1, -60, 0, 4)
+SettingsBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+SettingsBtn.Text = "⚙"
+SettingsBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+SettingsBtn.TextSize = 14
+SettingsBtn.Font = Enum.Font.GothamBold
+SettingsBtn.Parent = Header
+
+Instance.new("UICorner", SettingsBtn).CornerRadius = UDim.new(0, 5)
+
+-- Minimize Button
+local MinimizeBtn = Instance.new("TextButton")
+MinimizeBtn.Size = UDim2.new(0, 24, 0, 24)
+MinimizeBtn.Position = UDim2.new(1, -32, 0, 4)
+MinimizeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+MinimizeBtn.Text = "−"
+MinimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinimizeBtn.TextSize = 16
+MinimizeBtn.Font = Enum.Font.GothamBold
+MinimizeBtn.Parent = Header
+
+Instance.new("UICorner", MinimizeBtn).CornerRadius = UDim.new(0, 5)
+
+-- Container
+local Container = Instance.new("Frame")
+Container.Size = UDim2.new(1, -12, 1, -42)
+Container.Position = UDim2.new(0, 6, 0, 36)
+Container.BackgroundTransparency = 1
+Container.Parent = MainFrame
+
+-- Settings Panel
+local SettingsPanel = Instance.new("Frame")
+SettingsPanel.Size = UDim2.new(0, 160, 0, 180)
+SettingsPanel.Position = UDim2.new(0, -170, 0, 0)
+SettingsPanel.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+SettingsPanel.BackgroundTransparency = 0.08
+SettingsPanel.BorderSizePixel = 0
+SettingsPanel.ClipsDescendants = true
+SettingsPanel.Visible = false
+SettingsPanel.Parent = MainFrame
+
+Instance.new("UICorner", SettingsPanel).CornerRadius = UDim.new(0, 10)
+
+local SettingsStroke = Instance.new("UIStroke")
+SettingsStroke.Thickness = 1.5
+SettingsStroke.Color = Color3.fromRGB(255, 150, 50)
+SettingsStroke.Transparency = 0.3
+SettingsStroke.Parent = SettingsPanel
+
+-- Settings Header
+local SettingsHeader = Instance.new("Frame")
+SettingsHeader.Size = UDim2.new(1, 0, 0, 28)
+SettingsHeader.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+SettingsHeader.BorderSizePixel = 0
+SettingsHeader.Parent = SettingsPanel
+
+Instance.new("UICorner", SettingsHeader).CornerRadius = UDim.new(0, 10)
+
+local SettingsTitle = Instance.new("TextLabel")
+SettingsTitle.Size = UDim2.new(1, 0, 1, 0)
+SettingsTitle.BackgroundTransparency = 1
+SettingsTitle.Text = "الإعدادات ⚙"
+SettingsTitle.TextColor3 = Color3.fromRGB(255, 180, 80)
+SettingsTitle.TextSize = 12
+SettingsTitle.Font = Enum.Font.GothamBold
+SettingsTitle.Parent = SettingsHeader
+
+-- Settings Container
+local SettingsContainer = Instance.new("ScrollingFrame")
+SettingsContainer.Size = UDim2.new(1, -10, 1, -35)
+SettingsContainer.Position = UDim2.new(0, 5, 0, 30)
+SettingsContainer.BackgroundTransparency = 1
+SettingsContainer.ScrollBarThickness = 2
+SettingsContainer.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 120)
+SettingsContainer.CanvasSize = UDim2.new(0, 0, 0, 200)
+SettingsContainer.Parent = SettingsPanel
+
+--// ==================== [6] DRAG SYSTEM ====================
+
+local dragging = false
+local dragInput, dragStart, startPos, dragTarget = nil, nil, nil, nil
+
+local function MakeDraggable(frame)
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragTarget = frame
+            dragStart = input.Position
+            startPos = frame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then 
+                    dragging = false 
+                    dragTarget = nil
+                end
+            end)
+        end
+    end)
+end
+
+MakeDraggable(MainFrame)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
 end)
 
---// SPEED BUTTON
-local speedBtn = Instance.new("TextButton", frame)
-speedBtn.Size = UDim2.new(1,0,0,30)
-speedBtn.Position = UDim2.new(0,0,0,80)
-speedBtn.Text = "Speed OFF"
-
-speedBtn.MouseButton1Click:Connect(function()
-SpeedOn = not SpeedOn
-speedBtn.Text = SpeedOn and "Speed ON" or "Speed OFF"
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging and dragTarget then
+        local delta = input.Position - dragStart
+        local newPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        dragTarget.Position = newPos
+        
+        if dragTarget == MainFrame and SettingsPanel.Visible then
+            SettingsPanel.Position = UDim2.new(newPos.X.Scale, newPos.X.Offset - 170, newPos.Y.Scale, newPos.Y.Offset)
+        end
+    end
 end)
 
---// STEAL BUTTON
-local stealBtn = Instance.new("TextButton", frame)
-stealBtn.Size = UDim2.new(1,0,0,30)
-stealBtn.Position = UDim2.new(0,0,0,115)
-stealBtn.Text = "Steal Mode OFF"
+--// ==================== [7] UI COMPONENTS ====================
 
-stealBtn.MouseButton1Click:Connect(function()
-StealMode = not StealMode
-stealBtn.Text = StealMode and "Steal Mode ON" or "Steal Mode OFF"
-end)
+local function CreateToggle(name, color, icon, parent, yPos, callback)
+    local btn = Instance.new("TextButton")
+    btn.Name = name .. "Btn"
+    btn.Size = UDim2.new(1, -4, 0, 34)
+    btn.Position = UDim2.new(0, 2, 0, yPos)
+    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
+    btn.Text = ""
+    btn.AutoButtonColor = false
+    btn.Parent = parent
+    
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.Thickness = 1
+    stroke.Color = Color3.fromRGB(50, 55, 70)
+    stroke.Transparency = 0.5
+    stroke.Parent = btn
+    
+    local glow = Instance.new("Frame")
+    glow.Name = "Glow"
+    glow.Size = UDim2.new(1, 0, 1, 0)
+    glow.BackgroundColor3 = color
+    glow.BackgroundTransparency = 1
+    glow.BorderSizePixel = 0
+    glow.ZIndex = 0
+    glow.Parent = btn
+    Instance.new("UICorner", glow).CornerRadius = UDim.new(0, 8)
+    
+    local iconLabel = Instance.new("TextLabel")
+    iconLabel.Size = UDim2.new(0, 22, 0, 22)
+    iconLabel.Position = UDim2.new(0, 8, 0.5, -11)
+    iconLabel.BackgroundTransparency = 1
+    iconLabel.Text = icon
+    iconLabel.TextColor3 = color
+    iconLabel.TextSize = 14
+    iconLabel.Font = Enum.Font.GothamBold
+    iconLabel.Parent = btn
+    
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -75, 1, 0)
+    label.Position = UDim2.new(0, 36, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Text = name
+    label.TextColor3 = Color3.fromRGB(200, 200, 210)
+    label.TextSize = 11
+    label.Font = Enum.Font.GothamBold
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = btn
+    
+    local switchFrame = Instance.new("Frame")
+    switchFrame.Size = UDim2.new(0, 36, 0, 18)
+    switchFrame.Position = UDim2.new(1, -42, 0.5, -9)
+    switchFrame.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+    switchFrame.BorderSizePixel = 0
+    switchFrame.Parent = btn
+    
+    Instance.new("UICorner", switchFrame).CornerRadius = UDim.new(1, 0)
+    
+    local switchCircle = Instance.new("Frame")
+    switchCircle.Size = UDim2.new(0, 14, 0, 14)
+    switchCircle.Position = UDim2.new(0, 2, 0.5, -7)
+    switchCircle.BackgroundColor3 = Color3.fromRGB(130, 130, 150)
+    switchCircle.BorderSizePixel = 0
+    switchCircle.Parent = switchFrame
+    
+    Instance.new("UICorner", switchCircle).CornerRadius = UDim.new(1, 0)
+    
+    local statusLine = Instance.new("Frame")
+    statusLine.Size = UDim2.new(0, 0, 0, 2)
+    statusLine.Position = UDim2.new(0, 0, 1, -2)
+    statusLine.BackgroundColor3 = color
+    statusLine.BorderSizePixel = 0
+    statusLine.Parent = btn
+    
+    local isActive = false
+    
+    local function updateVisual(state, instant)
+        isActive = state
+        local tweenInfo = instant and TweenInfo.new(0) or TweenInfo.new(0.2, Enum.EasingStyle.Quad)
+        
+        if state then
+            TweenService:Create(btn, tweenInfo, {BackgroundColor3 = Color3.fromRGB(40, 48, 65)}):Play()
+            TweenService:Create(stroke, tweenInfo, {Color = color, Transparency = 0.2}):Play()
+            TweenService:Create(label, tweenInfo, {TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
+            TweenService:Create(switchFrame, tweenInfo, {BackgroundColor3 = color}):Play()
+            TweenService:Create(switchCircle, TweenInfo.new(0.2, Enum.EasingStyle.Back), {Position = UDim2.new(1, -16, 0.5, -7), BackgroundColor3 = Color3.fromRGB(255, 255, 255)}):Play()
+            TweenService:Create(statusLine, tweenInfo, {Size = UDim2.new(1, 0, 0, 2)}):Play()
+            TweenService:Create(glow, tweenInfo, {BackgroundTransparency = 0.92}):Play()
+        else
+            TweenService:Create(btn, tweenInfo, {BackgroundColor3 = Color3.fromRGB(30, 30, 38)}):Play()
+            TweenService:Create(stroke, tweenInfo, {Color = Color3.fromRGB(50, 55, 70), Transparency = 0.5}):Play()
+            TweenService:Create(label, tweenInfo, {TextColor3 = Color3.fromRGB(200, 200, 210)}):Play()
+            TweenService:Create(switchFrame, tweenInfo, {BackgroundColor3 = Color3.fromRGB(45, 45, 55)}):Play()
+            TweenService:Create(switchCircle, TweenInfo.new(0.2, Enum.EasingStyle.Back), {Position = UDim2.new(0, 2, 0.5, -7), BackgroundColor3 = Color3.fromRGB(130, 130, 150)}):Play()
+            TweenService:Create(statusLine, tweenInfo, {Size = UDim2.new(0, 0, 0, 2)}):Play()
+            TweenService:Create(glow, tweenInfo, {BackgroundTransparency = 1}):Play()
+        end
+    end
+    
+    btn.MouseButton1Click:Connect(function()
+        local newState = not isActive
+        updateVisual(newState)
+        callback(newState)
+    end)
+    
+    btn.MouseEnter:Connect(function()
+        if not isActive then
+            TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(38, 38, 48)}):Play()
+        end
+    end)
+    
+    btn.MouseLeave:Connect(function()
+        if not isActive then
+            TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(30, 30, 38)}):Play()
+        end
+    end)
+    
+    return updateVisual
+end
 
---// MAIN LOOP (خفيف جداً)
-task.spawn(function()
-while task.wait(0.3) do
-if not SpeedOn then continue end
-
-```
-    local char = LocalPlayer.Character
-    if not char then continue end
-
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum then continue end
-
-    if StealMode then
-        hum.WalkSpeed = StealSpeed
-    else
-        hum.WalkSpeed = NormalSpeed
+local function CreateSlider(name, min, max, default, color, parent, yPos, callback)
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(1, -4, 0, 45)
+    frame.Position = UDim2.new(0, 2, 0, yPos)
+    frame.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
+    frame.BorderSizePixel = 0
+    frame.Parent = parent
+    
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
+    
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(0.5, 0, 0, 18)
+    label.Position = UDim2.new(0, 8, 0, 4)
+    label.BackgroundTransparency = 1
+    label.Text = name
+    label.TextColor3 = Color3.fromRGB(180, 180, 190)
+    label.TextSize = 10
+    label.Font = Enum.Font.GothamBold
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = frame
+    
+    local valueLabel = Instance.new("TextLabel")
+    valueLabel.Size = UDim2.new(0.4, 0, 0, 18)
+    valueLabel.Position = UDim2.new(0.5, 0, 0, 4)
+    valueLabel.BackgroundTransparency = 1
+    valueLabel.Text = tostring(default)
+    valueLabel.TextColor3 = color
+    valueLabel.TextSize = 10
+    valueLabel.Font = Enum.Font.GothamBold
+    valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+    valueLabel.Parent = frame
+    
+    local track = Instance.new("Frame")
+    track.Size = UDim2.new(1, -16, 0, 6)
+    track.Position = UDim2.new(0, 8, 0, 28)
+    track.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+    track.BorderSizePixel = 0
+    track.Parent = frame
+    
+    Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+    
+    local fill = Instance.new("Frame")
+    fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+    fill.BackgroundColor3 = color
+    fill.BorderSizePixel = 0
+    fill.Parent = track
+    
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+    
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.new(0, 12, 0, 12)
+    knob.Position = UDim2.new((default - min) / (max - min), -6, 0.5, -6)
+    knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    knob.BorderSizePixel = 0
+    knob.Parent = track
+    
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+    
+    local dragging = false
+    
+    local function updateSlider(input)
+        local pos = math.clamp((input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
+        local value = math.floor(min + (max - min) * pos)
+        
+        fill.Size = UDim2.new(pos, 0, 1, 0)
+        knob.Position = UDim2.new(pos, -6, 0.5, -6)
+        valueLabel.Text = tostring(value)
+        
+        callback(value)
+        return value
+    end
+    
+    track.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            updateSlider(input)
+        end
+    end)
+    
+    track.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            updateSlider(input)
+        end
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+    
+    return function(newValue)
+        local pos = (newValue - min) / (max - min)
+        fill.Size = UDim2.new(pos, 0, 1, 0)
+        knob.Position = UDim2.new(pos, -6, 0.5, -6)
+        valueLabel.Text = tostring(newValue)
     end
 end
-```
 
+--// ==================== [8] SMART CACHE SYSTEM ====================
+
+local CachedPrompts = {}
+local LastCacheTime = 0
+local CacheInterval = 3
+
+local function UpdatePromptCache()
+    local currentTime = tick()
+    if currentTime - LastCacheTime < CacheInterval then return end
+    LastCacheTime = currentTime
+    
+    CachedPrompts = {}
+    SafeCall(function()
+        local plots = Workspace:FindFirstChild("Plots")
+        if not plots then return end
+        
+        for _, plot in pairs(plots:GetChildren()) do
+            local podiums = plot:FindFirstChild("AnimalPodiums")
+            if podiums then
+                for _, podium in pairs(podiums:GetChildren()) do
+                    local base = podium:FindFirstChild("Base")
+                    local spawn = base and base:FindFirstChild("Spawn")
+                    local att = spawn and spawn:FindFirstChild("PromptAttachment")
+                    
+                    if att then
+                        for _, prompt in pairs(att:GetChildren()) do
+                            if prompt:IsA("ProximityPrompt") then
+                                table.insert(CachedPrompts, prompt)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+
+--// ==================== [9] GALAXY SYSTEM (CACHED MASS) ====================
+
+local galaxyVectorForce = nil
+local galaxyAttachment = nil
+local spaceHeld = false
+local lastHopTime = 0
+local cachedMass = 0
+local massCalculated = false
+
+local function CalculateMass()
+    SafeCall(function()
+        local c = LocalPlayer.Character
+        if not c then return end
+        
+        cachedMass = 0
+        for _, p in ipairs(c:GetDescendants()) do
+            if p:IsA("BasePart") then
+                cachedMass = cachedMass + p:GetMass()
+            end
+        end
+        massCalculated = true
+    end)
+end
+
+local function SetupGalaxy()
+    SafeCall(function()
+        local c = LocalPlayer.Character
+        if not c then return end
+        local h = c:FindFirstChild("HumanoidRootPart")
+        if not h then return end
+        
+        if galaxyVectorForce then galaxyVectorForce:Destroy() end
+        if galaxyAttachment then galaxyAttachment:Destroy() end
+        
+        galaxyAttachment = Instance.new("Attachment")
+        galaxyAttachment.Parent = h
+        
+        galaxyVectorForce = Instance.new("VectorForce")
+        galaxyVectorForce.Attachment0 = galaxyAttachment
+        galaxyVectorForce.ApplyAtCenterOfMass = true
+        galaxyVectorForce.RelativeTo = Enum.ActuatorRelativeTo.World
+        galaxyVectorForce.Force = Vector3.new(0, 0, 0)
+        galaxyVectorForce.Parent = h
+        
+        CalculateMass()
+    end)
+end
+
+local function UpdateGalaxy()
+    if not Settings.Galaxy or not galaxyVectorForce or not massCalculated then return end
+    
+    local targetGravity = workspace.Gravity * (Settings.GalaxyGravityPercent / 100)
+    galaxyVectorForce.Force = Vector3.new(0, cachedMass * (workspace.Gravity - targetGravity) * 0.98, 0)
+end
+
+local function DoMiniHop()
+    if not Settings.Galaxy then return end
+    
+    SafeCall(function()
+        local c = LocalPlayer.Character
+        if not c then return end
+        local h = c:FindFirstChild("HumanoidRootPart")
+        local hum = c:FindFirstChildOfClass("Humanoid")
+        if not h or not hum then return end
+        
+        if tick() - lastHopTime < Settings.GalaxyHopCooldown then return end
+        lastHopTime = tick()
+        
+        if spaceHeld and hum.FloorMaterial == Enum.Material.Air then
+            h.AssemblyLinearVelocity = Vector3.new(
+                h.AssemblyLinearVelocity.X,
+                Settings.GalaxyHopPower,
+                h.AssemblyLinearVelocity.Z
+            )
+        end
+    end)
+end
+
+--// ==================== [10] ANTI-RUBBERBAND SPEED SYSTEM ====================
+
+local LastPosition = nil
+local LastSpeedTime = 0
+local VelocitySmooth = Vector3.new(0, 0, 0)
+local PositionHistory = {}
+
+local function GetDynamicInterval()
+    return math.clamp(1 / (Settings.NormalSpeed / 25), 0.03, 0.15)
+end
+
+local function UpdateSpeed()
+    if not Settings.SpeedBoost then return end
+    
+    SafeCall(function()
+        local c = LocalPlayer.Character
+        if not c then return end
+        local h = c:FindFirstChild("HumanoidRootPart")
+        local hum = c:FindFirstChildOfClass("Humanoid")
+        if not h or not hum then return end
+        
+        local isStealing = LocalPlayer:GetAttribute("Stealing")
+        if isStealing then return end
+        
+        local md = hum.MoveDirection
+        if md.Magnitude < 0.1 then return end
+        
+        -- Anti-rubberband: Check position jump
+        if LastPosition then
+            local dist = (h.Position - LastPosition).Magnitude
+            if dist > 15 then
+                -- Possible rubberband, reduce speed temporarily
+                VelocitySmooth = VelocitySmooth * 0.5
+            end
+        end
+        
+        -- Calculate target velocity
+        local targetSpeed = Settings.NormalSpeed
+        local targetVel = Vector3.new(md.X * targetSpeed, h.AssemblyLinearVelocity.Y, md.Z * targetSpeed)
+        
+        -- Smooth interpolation (Lerp)
+        local smoothFactor = Settings.AntiLag and 0.75 or 0.9
+        VelocitySmooth = VelocitySmooth:Lerp(targetVel, smoothFactor)
+        
+        -- Apply with small randomization to avoid pattern detection
+        local randomOffset = Vector3.new(
+            math.random(-5, 5) * 0.01,
+            0,
+            math.random(-5, 5) * 0.01
+        )
+        
+        h.AssemblyLinearVelocity = VelocitySmooth + randomOffset
+        
+        -- Update position history
+        local currentTime = tick()
+        if currentTime - LastSpeedTime > GetDynamicInterval() then
+            LastSpeedTime = currentTime
+            LastPosition = h.Position
+        end
+    end)
+end
+
+--// ==================== [11] SMART INVISIBILITY SYSTEM ====================
+
+local InvisibilityConnection = nil
+local LastInvisUpdate = 0
+local FakePosition = nil
+local InvisOffset = Vector3.new(0, 0, 0)
+
+local function SendFakePosition(position)
+    SafeCall(function()
+        local cf = CFrame.new(position)
+        
+        -- Try rnet (optional)
+        if typeof(rnet) == "table" then
+            if rnet.sendphysics then rnet.sendphysics(cf) end
+            if rnet.sendposition then rnet.sendposition(position) end
+        end
+        
+        -- Try delta (optional)
+        if typeof(delta) == "table" then
+            if delta.sendphysics then delta.sendphysics(cf) end
+            if delta.sendposition then delta.sendposition(position) end
+        end
+        
+        -- Fallback: Visual only
+        if sethiddenproperty then
+            sethiddenproperty(LocalPlayer, "SimulationRadius", 0)
+        end
+    end)
+end
+
+local function SetDesync(state)
+    SafeCall(function()
+        if typeof(rnet) == "table" then
+            if rnet.setdesync then rnet.setdesync(state) end
+            if rnet.desync then rnet.desync(state) end
+        end
+        if typeof(delta) == "table" then
+            if delta.raknet_desync then delta.raknet_desync(state) end
+            if delta.desync then delta.desync(state) end
+        end
+    end)
+end
+
+local function UpdateInvisibility()
+    if not Settings.Invisibility then return end
+    
+    local currentTime = tick()
+    if currentTime - LastInvisUpdate < Settings.InvisUpdateRate then return end
+    LastInvisUpdate = currentTime
+    
+    SafeCall(function()
+        local c = LocalPlayer.Character
+        if not c then return end
+        local h = c:FindFirstChild("HumanoidRootPart")
+        if not h then return end
+        
+        -- Dynamic offset for natural movement
+        InvisOffset = Vector3.new(
+            math.sin(tick() * 1.5) * 1.2,
+            math.sin(tick() * 2.3) * 0.5,
+            math.cos(tick() * 1.8) * 1.2
+        )
+        
+        FakePosition = h.Position + InvisOffset
+        SendFakePosition(FakePosition)
+    end)
+end
+
+local function StartInvisibility()
+    SetDesync(true)
+    
+    SafeCall(function()
+        local c = LocalPlayer.Character
+        if c then
+            local h = c:FindFirstChild("HumanoidRootPart")
+            if h then
+                FakePosition = h.Position
+                SendFakePosition(FakePosition)
+            end
+        end
+    end)
+    
+    Notify("FR HUB", "الاختفاء مفعل! 🌫", 3)
+end
+
+local function StopInvisibility()
+    SetDesync(false)
+    FakePosition = nil
+    Notify("FR HUB", "الاختفاء متوقف", 2)
+end
+
+--// ==================== [12] INSTA STEAL (CACHED) ====================
+
+local function UpdateInstaSteal()
+    if not Settings.InstaSteal then return end
+    
+    UpdatePromptCache()
+    
+    SafeCall(function()
+        for _, prompt in pairs(CachedPrompts) do
+            if prompt and prompt.Parent then
+                prompt.HoldDuration = 0.01
+                prompt.MaxActivationDistance = 12
+            end
+        end
+    end)
+end
+
+--// ==================== [13] UNIFIED MAIN LOOP ====================
+
+local MainLoopConnection = nil
+local LoopCounter = 0
+
+local function StartMainLoop()
+    if MainLoopConnection then return end
+    
+    MainLoopConnection = RunService.Heartbeat:Connect(function()
+        LoopCounter = LoopCounter + 1
+        
+        -- Speed: Every frame
+        if Settings.SpeedBoost then
+            UpdateSpeed()
+        end
+        
+        -- Galaxy: Every frame
+        if Settings.Galaxy then
+            UpdateGalaxy()
+            DoMiniHop()
+        end
+        
+        -- Invisibility: Every 2.5 seconds (controlled by UpdateInvisibility)
+        if Settings.Invisibility then
+            UpdateInvisibility()
+        end
+        
+        -- InstaSteal: Every 10 frames (0.16s at 60fps)
+        if LoopCounter % 10 == 0 and Settings.InstaSteal then
+            UpdateInstaSteal()
+        end
+    end)
+end
+
+--// ==================== [14] FAILSAFE SYSTEM ====================
+
+local function ResetSystems()
+    -- Cleanup Galaxy
+    if galaxyVectorForce then
+        galaxyVectorForce:Destroy()
+        galaxyVectorForce = nil
+    end
+    if galaxyAttachment then
+        galaxyAttachment:Destroy()
+        galaxyAttachment = nil
+    end
+    
+    -- Cleanup Invisibility
+    SetDesync(false)
+    
+    -- Reset variables
+    massCalculated = false
+    cachedMass = 0
+    VelocitySmooth = Vector3.new(0, 0, 0)
+    LastPosition = nil
+    CachedPrompts = {}
+end
+
+local function OnCharacterAdded()
+    task.wait(0.5)
+    
+    ResetSystems()
+    
+    -- Re-initialize active systems
+    if Settings.Galaxy then
+        SetupGalaxy()
+    end
+    
+    if Settings.Invisibility then
+        task.delay(1, StartInvisibility)
+    end
+end
+
+LocalPlayer.CharacterAdded:Connect(OnCharacterAdded)
+
+--// ==================== [15] CREATE MAIN BUTTONS ====================
+
+local updateInstaSteal, updateGalaxy, updateSpeed, updateInvisibility
+
+updateInstaSteal = CreateToggle("انستا سرقة", Color3.fromRGB(255, 70, 70), "💎", Container, 0, function(on)
+    Settings.InstaSteal = on
+    if on then 
+        UpdatePromptCache()
+        Notify("FR HUB", "انستا سرقة مفعل! ⚡", 2) 
+    end
+    SaveSettings()
 end)
+
+updateGalaxy = CreateToggle("وضع قالكسي", Color3.fromRGB(200, 50, 255), "🌌", Container, 38, function(on)
+    Settings.Galaxy = on
+    if on then
+        SetupGalaxy()
+        Notify("FR HUB", "قالكسي شغال! 🚀", 2)
+    else
+        ResetSystems()
+    end
+    SaveSettings()
+end)
+
+updateSpeed = CreateToggle("سرعة مضاعفة", Color3.fromRGB(60, 220, 130), "⚡", Container, 76, function(on)
+    Settings.SpeedBoost = on
+    if on then
+        Notify("FR HUB", "السرعة: " .. Settings.NormalSpeed .. " 🏃", 2)
+    end
+    SaveSettings()
+end)
+
+updateInvisibility = CreateToggle("الاختفاء الذكي", Color3.fromRGB(255, 140, 40), "👻", Container, 114, function(on)
+    Settings.Invisibility = on
+    if on then
+        StartInvisibility()
+    else
+        StopInvisibility()
+    end
+    SaveSettings()
+end)
+
+--// ==================== [16] CREATE SETTINGS CONTROLS ====================
+
+local updateSpeedSlider = CreateSlider("سرعة الحركة", 20, 100, Settings.NormalSpeed, Color3.fromRGB(60, 220, 130), SettingsContainer, 0, function(value)
+    Settings.NormalSpeed = value
+    SaveSettings()
+end)
+
+local updateGravitySlider = CreateSlider("جاذبية قالكسي", 10, 80, Settings.GalaxyGravityPercent, Color3.fromRGB(200, 50, 255), SettingsContainer, 50, function(value)
+    Settings.GalaxyGravityPercent = value
+    SaveSettings()
+end)
+
+local updateHopSlider = CreateSlider("قوة القفز", 15, 50, Settings.GalaxyHopPower, Color3.fromRGB(200, 50, 255), SettingsContainer, 100, function(value)
+    Settings.GalaxyHopPower = value
+    SaveSettings()
+end)
+
+local updateAntiLag = CreateToggle("منع اللاق", Color3.fromRGB(100, 180, 255), "🛡", SettingsContainer, 150, function(on)
+    Settings.AntiLag = on
+    Notify("FR HUB", on and "منع اللاق مفعل! 🛡" or "منع اللاق متوقف", 2)
+    SaveSettings()
+end)
+
+--// ==================== [17] SETTINGS PANEL TOGGLE ====================
+
+SettingsBtn.MouseButton1Click:Connect(function()
+    Settings.SettingsVisible = not Settings.SettingsVisible
+    
+    if Settings.SettingsVisible then
+        SettingsPanel.Visible = true
+        TweenService:Create(SettingsPanel, TweenInfo.new(0.3, Enum.EasingStyle.Back), {
+            Position = UDim2.new(0, -170, 0, 0)
+        }):Play()
+        TweenService:Create(SettingsBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(255, 150, 50)}):Play()
+    else
+        TweenService:Create(SettingsPanel, TweenInfo.new(0.25, Enum.EasingStyle.Quad), {
+            Position = UDim2.new(0, 0, 0, 0)
+        }):Play()
+        task.delay(0.25, function()
+            SettingsPanel.Visible = false
+        end)
+        TweenService:Create(SettingsBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 55)}):Play()
+    end
+    SaveSettings()
+end)
+
+--// ==================== [18] MINIMIZE FUNCTION ====================
+
+MinimizeBtn.MouseButton1Click:Connect(function()
+    Settings.Minimized = not Settings.Minimized
+    
+    if Settings.Minimized then
+        MinimizeBtn.Text = "+"
+        TweenService:Create(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad), {Size = UDim2.new(0, 200, 0, 32)}):Play()
+        Container.Visible = false
+        
+        if Settings.SettingsVisible then
+            Settings.SettingsVisible = false
+            TweenService:Create(SettingsPanel, TweenInfo.new(0.2), {Position = UDim2.new(0, 0, 0, 0)}):Play()
+            task.delay(0.2, function()
+                SettingsPanel.Visible = false
+            end)
+            TweenService:Create(SettingsBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 55)}):Play()
+        end
+    else
+        MinimizeBtn.Text = "−"
+        TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back), {Size = UDim2.new(0, 200, 0, 180)}):Play()
+        Container.Visible = true
+    end
+    SaveSettings()
+end)
+
+--// ==================== [19] INPUT HANDLING ====================
+
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.Space then
+        spaceHeld = true
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.Space then
+        spaceHeld = false
+    end
+end)
+
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.RightShift then
+        ScreenGui.Enabled = not ScreenGui.Enabled
+    end
+end)
+
+--// ==================== [20] START SYSTEMS ====================
+
+StartMainLoop()
+
+--// ==================== [21] AUTO LOAD ====================
+
+if Settings.InstaSteal then updateInstaSteal(true, true) end
+if Settings.Galaxy then 
+    updateGalaxy(true, true)
+    SetupGalaxy()
+end
+if Settings.SpeedBoost then updateSpeed(true, true) end
+if Settings.Invisibility then 
+    updateInvisibility(true, true)
+    task.delay(1, StartInvisibility)
+end
+if Settings.AntiLag ~= nil then updateAntiLag(Settings.AntiLag, true) end
+
+updateSpeedSlider(Settings.NormalSpeed)
+updateGravitySlider(Settings.GalaxyGravityPercent)
+updateHopSlider(Settings.GalaxyHopPower)
+
+--// ==================== [22] ANIMATED BORDER ====================
+
+task.spawn(function()
+    local t = 0
+    while ScreenGui.Parent do
+        t += 0.04
+        MainStroke.Transparency = 0.15 + math.sin(t * 2.5) * 0.1
+        local hue = (tick() * 0.025) % 1
+        MainStroke.Color = Color3.fromHSV(hue, 0.7, 1)
+        
+        if Settings.SettingsVisible then
+            SettingsStroke.Color = Color3.fromHSV((hue + 0.5) % 1, 0.6, 1)
+        end
+        
+        task.wait(0.04)
+    end
+end)
+
+--// ==================== [DONE] ====================
+
+Notify("FR HUB V13", "تم التحميل بنجاح! 🚀", 4)
+print("=== FR HUB V13 Pro Loaded ===")
+print("✓ Unified Loop System")
+print("✓ Anti-Rubberband Speed")
+print("✓ Smart Cache")
+print("✓ FailSafe Protection")
