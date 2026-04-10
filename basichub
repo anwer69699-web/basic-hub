@@ -13,8 +13,8 @@ local Workspace = game:GetService("Workspace")
 --// ==================== [1] Configuration ====================
 
 local Settings = {
-    NormalSpeed = 50,
-    StealSpeed = 25,
+    NormalSpeed = 40,
+    StealSpeed = 23,
     GalaxyGravityPercent = 40,
     GalaxyHopPower = 25,
     GalaxyHopCooldown = 0.08,
