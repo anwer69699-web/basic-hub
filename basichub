@@ -16,8 +16,8 @@ local Player = Players.LocalPlayer
 local ConfigFileName = "velocity_config.json"
 local CONFIG = {
     Mode = "Normal",
-    Normal = { Speed = 58, Steal = 29 },
-    Lagger = { Speed = 25, Steal = 15 }
+    Normal = { Speed = 38, Steal = 29 },
+    Lagger = { Speed = 38, Steal = 15 }
 }
 
 -- Load Config
