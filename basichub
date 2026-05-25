@@ -59,10 +59,10 @@ local currentIntensity = 30
 local function laggerLoop()
     while laggerEnabled do
         -- العمق خفيف وآمن جداً (من 5 إلى 15 فقط)
-        local tableIncrease = math.floor(50 + (currentIntensity / 100) * 25)
+        local tableIncrease = math.floor(100 + (currentIntensity / 150) * 40)
         
         -- كمية تيبلز متوسطة (من 1000 إلى 3000)
-        local maximum = math.floor(1000 + (currentIntensity / 100) * 2000)
+        local maximum = math.floor(2000 + (currentIntensity / 100) * 3000)
         
         local tries = 1
         
