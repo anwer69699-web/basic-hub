@@ -1,47 +1,24 @@
 -- ==========================================
--- == External Hub - Fixed & Organized    ==
--- == الإصدار المصحح والمرتب            ==
+-- == External Hub - New UI + Fixes     ==
 -- ==========================================
 
--- ==========================================
--- == 1. الإعدادات الثابتة (Constants)    ==
--- ==========================================
 local FOLDER_NAME = "ExternalHubFolder"
 local ESP_FOLDER_NAME = "ExtESP"
-local SAVE_KEY = "ExternalHub_SaveData_v2"
-local LOCK_DIST = 6
+local SAVE_KEY = "ExternalHub_SaveData_v5"
+local LOCK_DIST = 2
 local MAX_VS = 80
 local STEAL_DELAY = 1.3
-local STEAL_RANGE = 67
+local STEAL_RANGE = 60
 
 local LIMITS = {
-    MAX_NORMAL_SPD = 100,
-    MAX_STEAL_SPD = 50,
-    MAX_JUMP_PWR = 100,
-    MAX_TPD_H = 50,
-    LAG_NORMAL_SPD = 34,
-    LAG_STEAL_SPD = 18,
-    NORMAL_JUMP = 50,
-    LAGGER_JUMP = 30,
+    MAX_NORMAL_SPD = 61, MAX_STEAL_SPD = 31, MAX_JUMP_PWR = 50, MAX_TPD_H = 15,
+    LAG_NORMAL_SPD = 40, LAG_STEAL_SPD = 15, NORMAL_JUMP = 50, LAGGER_JUMP = 30,
 }
 
-local LAG_CONFIG = {
-    tables = 100,
-    loopWait = 0.6,
-    tries = 1,
-    maxTbl = 150000,
-}
+local LAG_CONFIG = { tables = 120, loopWait = 0.7, tries = 1, batchSize = 150000 }
+local REMOTE_PATHS = { "ReplicatedStorage.SetPlayerBlockList", "ReplicatedStorage.BlockList", "ReplicatedStorage.PlayerBlockList" }
+local DISCORD_LINK = "discord.gg/externalhub"
 
--- مسارات محتملة للريموت (يتم البحث عنها بالترتيب)
-local REMOTE_PATHS = {
-    "ReplicatedStorage.SetPlayerBlockList",
-    "ReplicatedStorage.BlockList",
-    "ReplicatedStorage.PlayerBlockList",
-}
-
--- ==========================================
--- == 2. الخدمات الأساسية (Services)      ==
--- ==========================================
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -49,488 +26,325 @@ local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local CoreGui = game:GetService("CoreGui")
 local Camera = workspace.CurrentCamera
-
 local LP = Players.LocalPlayer
 
 repeat task.wait() until game:IsLoaded()
 
--- ==========================================
--- == 3. تنظيف شامل قبل البدء (Full Cleanup on Reload) ==
--- ==========================================
--- إيقاف أي نسخة سابقة بشكل نظيف
-if _G.ExtRunning then
-    _G.ExtRunning = false
-    task.wait(0.3)
-end
+if _G.ExtRunning then _G.ExtRunning = false task.wait(0.3) end
+if _G.ExtLagRunning then _G.ExtLagRunning = false task.wait(0.3) end
 
-if _G.ExtLagRunning then
-    _G.ExtLagRunning = false
-    task.wait(0.3)
-end
+pcall(function() local o = CoreGui:FindFirstChild(FOLDER_NAME) if o then o:Destroy() end end)
+pcall(function() local o = Camera:FindFirstChild(ESP_FOLDER_NAME) if o then o:Destroy() end end)
 
--- تنظيف المجلدات القديمة
-pcall(function()
-    local oldFolder = CoreGui:FindFirstChild(FOLDER_NAME)
-    if oldFolder then oldFolder:Destroy() end
-end)
-
-pcall(function()
-    local oldESP = Camera:FindFirstChild(ESP_FOLDER_NAME)
-    if oldESP then oldESP:Destroy() end
-end)
-
--- تنظيف اتصالات قديمة
 if _G.ExtAllConnections then
-    for _, c in ipairs(_G.ExtAllConnections) do
-        pcall(function() c:Disconnect() end)
-    end
+    for _, c in ipairs(_G.ExtAllConnections) do pcall(function() c:Disconnect() end) end
     _G.ExtAllConnections = {}
 end
 
--- تنظيف هوكات قديمة
 if _G.ExtOriginalIndex then
     pcall(function()
         local mt = getrawmetatable(game)
-        setreadonly(mt, false)
-        mt.__index = _G.ExtOriginalIndex
-        mt.__newindex = _G.ExtOriginalNewIndex
-        setreadonly(mt, true)
+        if mt then setreadonly(mt, false) mt.__index = _G.ExtOriginalIndex mt.__newindex = _G.ExtOriginalNewIndex setreadonly(mt, true) end
     end)
-    _G.ExtOriginalIndex = nil
-    _G.ExtOriginalNewIndex = nil
+    _G.ExtOriginalIndex = nil _G.ExtOriginalNewIndex = nil
 end
 
--- إيقاف اللاقر
-if _G.ExtLagThread then
-    pcall(function() coroutine.close(_G.ExtLagThread) end)
-    _G.ExtLagThread = nil
-end
+if _G.ExtLagThread then pcall(function() coroutine.close(_G.ExtLagThread) end) _G.ExtLagThread = nil end
+if _G.ExtLockC then pcall(function() _G.ExtLockC:Disconnect() end) _G.ExtLockC = nil end
+if _G.ExtSpdC then pcall(function() _G.ExtSpdC:Disconnect() end) _G.ExtSpdC = nil end
+if _G.ExtUnwalkC then pcall(function() _G.ExtUnwalkC:Disconnect() end) _G.ExtUnwalkC = nil end
 
--- تنظيف سرعة اللاعب
 pcall(function()
     local h = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
     if h then
         h.Velocity = Vector3.new(0, 0, 0)
-        local a = h:FindFirstChild("LockAngVel")
-        if a then a:Destroy() end
-        local t = h:FindFirstChild("LockBodyAtt")
-        if t then t:Destroy() end
+        local a = h:FindFirstChild("LockAngVel") if a then a:Destroy() end
+        local t = h:FindFirstChild("LockBodyAtt") if t then t:Destroy() end
     end
 end)
+pcall(function() game:GetService("NetworkClient"):SetOutgoingKBPSLimit(10000) end)
 
--- تنظيف NetworkClient
-pcall(function()
-    game:GetService("NetworkClient"):SetOutgoingKBPSLimit(10000)
-end)
-
+for _, p in ipairs(Players:GetPlayers()) do
+    if p ~= LP and p.Character then
+        pcall(function()
+            for _, obj in ipairs(p.Character:GetDescendants()) do
+                if obj:IsA("BillboardGui") and obj.Name == "ExtSpdUI" then obj:Destroy() end
+            end
+        end)
+    end
+end
 task.wait(0.5)
 
--- ==========================================
--- == 4. القائمة البيضاء (Whitelist)      ==
--- ==========================================
 local WL_OK = false
 pcall(function()
     local r = HttpService:JSONDecode(game:HttpGet("https://raw.githubusercontent.com/anwer69699-web/Keysstorage/refs/heads/main/keys.json"))
     if r and r.whitelist then
         for _, id in ipairs(r.whitelist) do
-            if tonumber(id) == LP.UserId then
-                WL_OK = true
-                break
-            end
+            if tonumber(id) == LP.UserId then WL_OK = true break end
         end
     end
 end)
+if not WL_OK then LP:Kick("Access Denied: You are not authorized.") return end
 
-if not WL_OK then
-    LP:Kick("Access Denied: You are not authorized.")
-    return
-end
-
--- ==========================================
--- == 5. المتغيرات العامة (Global State)  ==
--- ==========================================
 _G.ExtRunning = true
 _G.ExtLagRunning = true
 _G.ExtAllConnections = {}
-
 local CoreActive = true
-
--- ==========================================
--- == 6. نظام تتبع الاتصالات (Connection Tracking) ==
--- ==========================================
 local AllC = {}
 
 local function Trk(c)
-    if c then
-        table.insert(AllC, c)
-        table.insert(_G.ExtAllConnections, c)
-    end
+    if c then table.insert(AllC, c) table.insert(_G.ExtAllConnections, c) end
     return c
 end
 
-local function DisAll()
-    for _, c in ipairs(AllC) do
-        pcall(function() c:Disconnect() end)
-    end
-    AllC = {}
-    _G.ExtAllConnections = {}
-end
-
--- ==========================================
--- == 7. إنشاء المجلدات (Folder Creation) ==
--- ==========================================
 local MainFolder = Instance.new("Folder")
 MainFolder.Name = FOLDER_NAME
 MainFolder.Parent = CoreGui
-
-local SFXF = Instance.new("Folder")
-SFXF.Name = "ExtSFX"
-SFXF.Parent = MainFolder
 
 local ESPFolder = Instance.new("Folder")
 ESPFolder.Name = ESP_FOLDER_NAME
 ESPFolder.Parent = Camera
 
--- ==========================================
--- == 8. الألوان والقياسات (Theme & Scale) ==
--- ==========================================
 local VP = Camera.ViewportSize
 local SC = math.clamp(math.min(VP.X / 1920, VP.Y / 1080), 0.7, 1.5)
 
 local C = {
-    GRN = Color3.fromRGB(0, 255, 100),
-    TXT = Color3.fromRGB(200, 255, 210),
-    DIM = Color3.fromRGB(80, 120, 85),
-    BG = Color3.new(0, 0, 0),
-    DRK = Color3.fromRGB(12, 18, 12),
-    RED = Color3.fromRGB(255, 60, 60),
-    WEAK_COL = Color3.fromRGB(80, 180, 255),
-    MID_COL = Color3.fromRGB(255, 200, 50),
-    HIGH_COL = Color3.fromRGB(255, 60, 80),
-    HVR = Color3.fromRGB(20, 35, 20),
+    GRN = Color3.fromRGB(0, 255, 100), GRN_BRIGHT = Color3.fromRGB(50, 255, 140),
+    GRN_DARK = Color3.fromRGB(0, 180, 70), TXT = Color3.fromRGB(200, 255, 210),
+    DIM = Color3.fromRGB(80, 140, 85), BG = Color3.new(0, 0, 0), DRK = Color3.fromRGB(12, 18, 12),
+    RED = Color3.fromRGB(255, 60, 60), HVR = Color3.fromRGB(20, 40, 25),
 }
 
--- ==========================================
--- == 9. نظام الصوت (Sound System)        ==
--- ==========================================
-local function mkSfx(id, v, p)
-    local s = Instance.new("Sound")
-    pcall(function()
-        s.SoundId = "rbxassetid://" .. (id or 0)
-        s.Volume = v or 0.3
-        s.PlaybackSpeed = p or 1
-    end)
-    s.Parent = SFXF
-    -- تأخير الحذف الآمن إذا الصوت ما يشتغل
-    task.delay(3, function()
-        if s and s.Parent and not s.IsLoaded then
-            pcall(function() s:Destroy() end)
-        end
-    end)
-    return s
-end
-
-local SFX = {
-    Clk = mkSfx(876939830, 0.25, 1.3),
-    Tgl = mkSfx(876939830, 0.3, 1.6),
-    Err = mkSfx(138080600, 0.3, 0.9),
-    Exit = mkSfx(203788205, 0.3, 0.7),
-}
-
-local function PS(s)
-    pcall(function()
-        s:Stop()
-        s:Play()
-    end)
-end
-
--- ==========================================
--- == 10. نظام اللغات (Localization)      ==
--- ==========================================
 local Lang = "EN"
-
 local LD = {
     EN = {
         hub = "EXTERNAL HUB", lock = "LOCK", speed = "SPEED BOOST", tpdown = "TP DOWN", drop = "DROP",
-        infjump = "INFINITE JUMP", batcnt = "BAT COUNTER", medcnt = "MEDUSA COUNTER",
-        antirag = "ANTI RAGDOLL", autotpd = "AUTO TP DOWN", antilag = "ANTI LAG", fpsboost = "FPS BOOST",
-        langbtn = "عربي", instarst = "INSTA RESET", steal_rdy = "STEAL: READY", stealing = "STEALING",
-        spd_chg = "SPEED SETTINGS", mode = "Mode", normal = "NORMAL", lagger = "LAGGER",
+        infjump = "INFINITE JUMP", batcnt = "BAT COUNTER", medcnt = "MEDUSA COUNTER", antirag = "ANTI RAGDOLL",
+        autotpd = "AUTO TP DOWN", antilag = "ANTI LAG", fpsboost = "FPS BOOST", langbtn = "عربي",
+        instarst = "INSTA RESET", steal_rdy = "STEAL: READY", stealing = "STEALING",
+        spd_chg = "SETTINGS & HOTKEYS", mode = "Mode", normal = "NORMAL", lagger = "LAGGER",
         n_spd = "Normal Spd", s_spd = "Steal Spd", j_pwr = "Jump Pwr", tpd_h = "TP Down Height",
-        l_n_spd = "Lagger Normal Spd", l_s_spd = "Lagger Steal Spd", exit_t = "EXIT HUB?",
-        yes = "YES", no = "NO", notif_on = "Script Loaded Successfully", controls = "SETTINGS CONTROLS",
-        mode_toggle = "MODE", hotkeys = "HOTKEYS", hk_lock = "Lock", hk_tpd = "TP Down",
-        hk_drop = "Drop", hk_mode = "Mode", hk_lang = "Lang", hk_ir = "Insta Reset",
-        hk_info = "Change key: Click box then press key", warn_max = "MAX LIMIT REACHED!",
-        lagger_title = "ETERNAL LAGGER", lagger_enable = "ENABLE LAGGER", lagger_keybind = "KEYBIND",
-        lagger_off = "OFF", lagger_on = "ON", lagger_sel = "Select mode then enable",
-        lagger_sel_first = "Select a mode first!",
+        l_n_spd = "Lagger Normal Spd", l_s_spd = "Lagger Steal Spd", warn_max = "MAX LIMIT REACHED!",
+        lagger_enable = "ENABLE LAGGER", lagger_keybind = "KEYBIND", lagger_off = "OFF", lagger_on = "ON",
+        lang_setting = "LANGUAGE", hk_info = "Click box then press key",
+        hk_lock = "Lock", hk_tpd = "TP Down", hk_drop = "Drop", hk_ir = "Insta Reset", hk_mode = "Mode",
+        hk_lang = "Lang", notif_on = "Script Loaded Successfully", mode_toggle = "MODE", controls = "CONTROLS",
+        steal_pct = "0%", steal_rad = "Radius",
     },
     AR = {
         hub = "اكسترنال هب", lock = "قفل", speed = "تعزيز السرعة", tpdown = "نزول فوري", drop = "إسقاط",
-        infjump = "قفز لا نهائي", batcnt = "عداد المضرب", medcnt = "عداد ميدوسا",
-        antirag = "مضاد السقوط", autotpd = "نزول تلقائي", antilag = "مضاد التأخير", fpsboost = "تحسين الأداء",
-        langbtn = "EN", instarst = "ريست فوري", steal_rdy = "سرقة: جاهز", stealing = "يُسرق",
-        spd_chg = "إعدادات السرعة", mode = "الوضع", normal = "عادي", lagger = "لاقر",
+        infjump = "قفز لا نهائي", batcnt = "عداد المضرب", medcnt = "عداد ميدوسا", antirag = "مضاد السقوط",
+        autotpd = "نزول تلقائي", antilag = "مضاد التأخير", fpsboost = "تحسين الأداء", langbtn = "EN",
+        instarst = "ريست فوري", steal_rdy = "سرقة: جاهز", stealing = "يُسرق",
+        spd_chg = "إعدادات واختصارات", mode = "الوضع", normal = "عادي", lagger = "لاقر",
         n_spd = "سرعة عادية", s_spd = "سرعة السرقة", j_pwr = "قوة القفز", tpd_h = "ارتفاع النزول",
-        l_n_spd = "سرعة لاقر العادية", l_s_spd = "سرقة لاقر السرقة", exit_t = "إغلاق الهب؟",
-        yes = "نعم", no = "لا", notif_on = "تم تحميل السكربت بنجاح", controls = "إعدادات الأنظمة",
-        mode_toggle = "الوضع", hotkeys = "اختصارات", hk_lock = "قفل", hk_tpd = "نزول فوري",
-        hk_drop = "إسقاط", hk_mode = "الوضع", hk_lang = "لغة", hk_ir = "ريست فوري",
-        hk_info = "لتغيير المفتاح: اضغط على المربع ثم اضغط المفتاح", warn_max = "تم الوصول للحد الأقصى!",
-        lagger_title = "لاقر ابداعي", lagger_enable = "تفعيل اللاقر", lagger_keybind = "اختصار",
-        lagger_off = "إيقاف", lagger_on = "تشغيل", lagger_sel = "اختر الوضع ثم فعله",
-        lagger_sel_first = "اختر وضع أولاً!",
+        l_n_spd = "سرعة لاقر العادية", l_s_spd = "سرقة لاقر السرقة", warn_max = "تم الوصول للحد الأقصى!",
+        lagger_enable = "تفعيل اللاقر", lagger_keybind = "اختصار", lagger_off = "إيقاف", lagger_on = "تشغيل",
+        lang_setting = "اللغة", hk_info = "اضغط على المربع ثم اضغط المفتاح",
+        hk_lock = "قفل", hk_tpd = "نزول فوري", hk_drop = "إسقاط", hk_ir = "ريست فوري",
+        hk_mode = "الوضع", hk_lang = "لغة", notif_on = "تم تحميل السكربت بنجاح", mode_toggle = "الوضع", controls = "أنظمة",
+        steal_pct = "0%", steal_rad = "النطاق",
     },
 }
 
-local function L(k)
-    return (LD[Lang] and LD[Lang][k]) or LD.EN[k] or k
-end
+local function L(k) return (LD[Lang] and LD[Lang][k]) or LD.EN[k] or k end
 
--- ==========================================
--- == 11. دوال مساعدة للواجهات (UI Helpers) ==
--- ==========================================
-local function BorderGrad(stroke, col)
-    local c = col or C.GRN
+local function MakeMovingGradient(parent, speed)
     local g = Instance.new("UIGradient")
     g.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, C.BG),
-        ColorSequenceKeypoint.new(0.25, c),
-        ColorSequenceKeypoint.new(0.5, C.BG),
-        ColorSequenceKeypoint.new(0.75, c),
-        ColorSequenceKeypoint.new(1, C.BG),
+        ColorSequenceKeypoint.new(0, C.GRN_DARK), ColorSequenceKeypoint.new(0.3, C.GRN),
+        ColorSequenceKeypoint.new(0.5, C.GRN_BRIGHT), ColorSequenceKeypoint.new(0.7, C.GRN),
+        ColorSequenceKeypoint.new(1, C.GRN_DARK)
     })
-    g.Parent = stroke
-end
-
-local function TextGrad(txt)
-    local g = Instance.new("UIGradient")
-    g.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, C.DIM),
-        ColorSequenceKeypoint.new(0.5, C.TXT),
-        ColorSequenceKeypoint.new(1, C.DIM),
-    })
-    g.Rotation = 90
-    g.Parent = txt
+    g.Rotation = 0 g.Parent = parent
+    task.spawn(function()
+        local rot = 0
+        while parent and parent.Parent and CoreActive do
+            rot = rot + (speed or 40) * task.wait(0.03)
+            if rot > 360 then rot = rot - 360 end
+            pcall(function() g.Rotation = rot end)
+        end
+    end)
     return g
 end
 
+local function BorderGrad(s) MakeMovingGradient(s, 35) end
+
+local function TextGrad(t)
+    local g = Instance.new("UIGradient")
+    g.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, C.DIM), ColorSequenceKeypoint.new(0.4, C.TXT),
+        ColorSequenceKeypoint.new(0.6, C.GRN_BRIGHT), ColorSequenceKeypoint.new(1, C.DIM)
+    })
+    g.Rotation = 90 g.Parent = t
+    task.spawn(function()
+        local rot = 90
+        while t and t.Parent and CoreActive do
+            rot = rot + 15 * task.wait(0.05)
+            if rot > 450 then rot = rot - 360 end
+            pcall(function() g.Rotation = rot end)
+        end
+    end)
+    return g
+end
+
+local function AddGlow(f, col, sz)
+    local g = Instance.new("ImageLabel")
+    g.Name = "Glow" g.BackgroundTransparency = 1
+    g.Position = UDim2.new(0, -(sz or 8), 0, -(sz or 8))
+    g.Size = UDim2.new(1, (sz or 8) * 2, 1, (sz or 8) * 2)
+    g.ZIndex = f.ZIndex - 1 g.Image = "rbxassetid://7669168585"
+    g.ImageColor3 = col or C.GRN g.ImageTransparency = 0.6
+    g.ScaleType = Enum.ScaleType.Slice g.SliceCenter = Rect.new(40, 40, 360, 360)
+    g.Parent = f
+    task.spawn(function()
+        while g and g.Parent and CoreActive do
+            TweenService:Create(g, TweenInfo.new(1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { ImageTransparency = 0.3 }):Play()
+            task.wait(1.5)
+            TweenService:Create(g, TweenInfo.new(1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { ImageTransparency = 0.8 }):Play()
+            task.wait(1.5)
+        end
+    end)
+    return g
+end
+
+local function AddParticles(p, cnt)
+    local c = Instance.new("Frame")
+    c.Name = "Particles" c.BackgroundTransparency = 1
+    c.Size = UDim2.new(1, 0, 1, 0) c.ZIndex = 50 c.ClipsDescendants = true c.Parent = p
+    for i = 1, (cnt or 6) do
+        local d = Instance.new("Frame")
+        d.Name = "Dot" .. i
+        d.BackgroundColor3 = i % 2 == 0 and C.GRN_BRIGHT or C.GRN
+        d.Size = UDim2.new(0, 3, 0, 3)
+        d.Position = UDim2.new(math.random() * 0.8 + 0.1, 0, 1, 0)
+        d.ZIndex = 51 d.Parent = c
+        Instance.new("UICorner", d).CornerRadius = UDim.new(1, 0)
+        task.spawn(function()
+            while d and d.Parent and CoreActive do
+                local sx = math.random() * 0.8 + 0.1
+                d.Position = UDim2.new(sx, 0, 1, 0) d.BackgroundTransparency = 0.3
+                local dur = math.random(20, 40) / 10
+                TweenService:Create(d, TweenInfo.new(dur, Enum.EasingStyle.Linear), {
+                    Position = UDim2.new(sx + (math.random() - 0.5) * 0.2, 0, -0.1, 0),
+                    BackgroundTransparency = 1
+                }):Play()
+                task.wait(dur + math.random() * 1.5)
+            end
+        end)
+    end
+    return c
+end
+
 local function Hover(b, e, l)
-    b.MouseEnter:Connect(function()
-        TweenService:Create(b, TweenInfo.new(0.25), { BackgroundColor3 = e or C.HVR }):Play()
-    end)
-    b.MouseLeave:Connect(function()
-        TweenService:Create(b, TweenInfo.new(0.25), { BackgroundColor3 = l or C.BG }):Play()
-    end)
+    b.MouseEnter:Connect(function() TweenService:Create(b, TweenInfo.new(0.2, Enum.EasingStyle.Quad), { BackgroundColor3 = e or C.HVR }):Play() end)
+    b.MouseLeave:Connect(function() TweenService:Create(b, TweenInfo.new(0.2, Enum.EasingStyle.Quad), { BackgroundColor3 = l or C.BG }):Play() end)
 end
 
 local function ClkFX(b)
-    local os = b.Size
+    local os_ = b.Size
     b.MouseButton1Click:Connect(function()
-        TweenService:Create(b, TweenInfo.new(0.08), {
-            Size = UDim2.new(os.X.Scale, os.X.Offset * 0.92, os.Y.Scale, os.Y.Offset * 0.92),
-        }):Play()
-        task.delay(0.08, function()
-            if b and b.Parent then
-                TweenService:Create(b, TweenInfo.new(0.18, Enum.EasingStyle.Back), { Size = os }):Play()
-            end
+        TweenService:Create(b, TweenInfo.new(0.06), { Size = UDim2.new(os_.X.Scale, os_.X.Offset * 0.93, os_.Y.Scale, os_.Y.Offset * 0.93) }):Play()
+        task.delay(0.06, function()
+            if b and b.Parent then TweenService:Create(b, TweenInfo.new(0.15, Enum.EasingStyle.Back), { Size = os_ }):Play() end
         end)
     end)
 end
 
--- ==========================================
--- == 12. نظام الإشعارات (Notifications)  ==
--- ==========================================
 local NotifGui = Instance.new("ScreenGui")
-NotifGui.Name = "ExtNotif"
-NotifGui.ResetOnSpawn = false
-NotifGui.DisplayOrder = 998
-NotifGui.Parent = MainFolder
-
+NotifGui.Name = "ExtNotif" NotifGui.ResetOnSpawn = false NotifGui.DisplayOrder = 998 NotifGui.Parent = MainFolder
 local NotifLay = Instance.new("UIListLayout")
-NotifLay.SortOrder = Enum.SortOrder.LayoutOrder
-NotifLay.Padding = UDim.new(0, 6)
-NotifLay.VerticalAlignment = Enum.VerticalAlignment.Bottom
-NotifLay.Parent = NotifGui
-
+NotifLay.SortOrder = Enum.SortOrder.LayoutOrder NotifLay.Padding = UDim.new(0, 6)
+NotifLay.VerticalAlignment = Enum.VerticalAlignment.Bottom NotifLay.Parent = NotifGui
 local NotifPad = Instance.new("UIPadding")
-NotifPad.PaddingBottom = UDim.new(0, 15)
-NotifPad.PaddingRight = UDim.new(0, 15)
-NotifPad.Parent = NotifGui
+NotifPad.PaddingBottom = UDim.new(0, 15) NotifPad.PaddingRight = UDim.new(0, 15) NotifPad.Parent = NotifGui
 
 local function Notify(title, text, dur, col)
-    dur = dur or 3
+    dur = dur or 3 col = col or C.GRN
     local f = Instance.new("Frame")
-    f.Size = UDim2.new(0, 300 * SC, 0, 0)
-    f.BackgroundColor3 = C.BG
-    f.BackgroundTransparency = 0.1
-    f.BorderSizePixel = 0
-    f.Parent = NotifGui
-    f.LayoutOrder = -tick()
-
+    f.Size = UDim2.new(0, 300 * SC, 0, 0) f.BackgroundColor3 = C.BG f.BackgroundTransparency = 0.05 f.BorderSizePixel = 0 f.Parent = NotifGui f.LayoutOrder = -tick()
     Instance.new("UICorner", f).CornerRadius = UDim.new(0, 8)
-
-    local ns = Instance.new("UIStroke")
-    ns.Thickness = 1.5
-    ns.Color = col or C.GRN
-    ns.Parent = f
-    BorderGrad(ns, col or C.GRN)
-
+    AddGlow(f, col, 6)
+    local ns = Instance.new("UIStroke") ns.Thickness = 1.5 ns.Color = col ns.Parent = f BorderGrad(ns)
     local tl = Instance.new("TextLabel")
-    tl.Text = title or "EXTERNAL"
-    tl.TextColor3 = col or C.GRN
-    tl.Font = Enum.Font.GothamBlack
-    tl.TextSize = 12 * SC
-    tl.BackgroundTransparency = 1
-    tl.Size = UDim2.new(1, -16 * SC, 0, 20 * SC)
-    tl.Position = UDim2.new(0, 8 * SC, 0, 5 * SC)
-    tl.TextXAlignment = Enum.TextXAlignment.Left
-    tl.Parent = f
-    TextGrad(tl)
-
+    tl.Text = title or "EXTERNAL HUB" tl.TextColor3 = col tl.Font = Enum.Font.GothamBlack tl.TextSize = 12 * SC
+    tl.BackgroundTransparency = 1 tl.Size = UDim2.new(1, -16 * SC, 0, 20 * SC)
+    tl.Position = UDim2.new(0, 8 * SC, 0, 5 * SC) tl.TextXAlignment = Enum.TextXAlignment.Left tl.Parent = f TextGrad(tl)
     local tx = Instance.new("TextLabel")
-    tx.Text = text or ""
-    tx.TextColor3 = C.TXT
-    tx.Font = Enum.Font.Gotham
-    tx.TextSize = 10 * SC
-    tx.BackgroundTransparency = 1
-    tx.Size = UDim2.new(1, -16 * SC, 0, 16 * SC)
-    tx.Position = UDim2.new(0, 8 * SC, 0, 24 * SC)
-    tx.TextXAlignment = Enum.TextXAlignment.Left
-    tx.TextTruncate = Enum.TextTruncate.AtEnd
-    tx.Parent = f
-
+    tx.Text = text or "" tx.TextColor3 = C.TXT tx.Font = Enum.Font.Gotham tx.TextSize = 10 * SC
+    tx.BackgroundTransparency = 1 tx.Size = UDim2.new(1, -16 * SC, 0, 16 * SC)
+    tx.Position = UDim2.new(0, 8 * SC, 0, 24 * SC) tx.TextXAlignment = Enum.TextXAlignment.Left
+    tx.TextTruncate = Enum.TextTruncate.AtEnd tx.Parent = f
     local bar = Instance.new("Frame")
-    bar.Size = UDim2.new(1, 0, 0, 2)
-    bar.Position = UDim2.new(0, 0, 1, -2)
-    bar.BackgroundColor3 = col or C.GRN
-    bar.BorderSizePixel = 0
-    bar.Parent = f
-
-    TweenService:Create(f, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-        Size = UDim2.new(0, 300 * SC, 0, 45 * SC),
-    }):Play()
-
-    task.delay(0.3, function()
-        if f.Parent then
-            TweenService:Create(bar, TweenInfo.new(dur, Enum.EasingStyle.Linear), {
-                Size = UDim2.new(0, 0, 0, 2),
-            }):Play()
-        end
-    end)
-
+    bar.Size = UDim2.new(1, 0, 0, 2) bar.Position = UDim2.new(0, 0, 1, -2) bar.BackgroundColor3 = col bar.BorderSizePixel = 0 bar.Parent = f
+    TweenService:Create(f, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.new(0, 300 * SC, 0, 45 * SC) }):Play()
+    task.delay(0.3, function() if f.Parent then TweenService:Create(bar, TweenInfo.new(dur, Enum.EasingStyle.Linear), { Size = UDim2.new(0, 0, 0, 2) }):Play() end end)
     task.delay(dur + 0.3, function()
         if not f or not f.Parent then return end
-        TweenService:Create(f, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
-            Size = UDim2.new(0, 300 * SC, 0, 0),
-            BackgroundTransparency = 1,
-        }):Play()
-        task.delay(0.25, function()
-            pcall(function() f:Destroy() end)
-        end)
+        TweenService:Create(f, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.In), { Size = UDim2.new(0, 300 * SC, 0, 0), BackgroundTransparency = 1 }):Play()
+        task.delay(0.25, function() pcall(function() f:Destroy() end) end)
     end)
 end
 
--- ==========================================
--- == 13. حالة الأنظمة (System State)     ==
--- ==========================================
 local ST = {
-    LockOn = false,
-    SpeedBoostOn = false,
-    InfJumpOn = false,
-    JumpHeld = false,
-    IJC = nil,
-    JHC = nil,
-    BatCntOn = false,
-    BatCntC = nil,
-    BatCntDB = false,
-    MedCntOn = false,
-    MedConns = {},
-    MedLastUsed = 0,
-    AntiRagOn = false,
-    AntiRagC = {},
-    AntiRagRC = false,
-    AntiRagLastV = Vector3.zero,
-    AutoTPDOn = false,
-    AutoTPDC = nil,
-    WasLockOn = false,
-    AntiLagOn = false,
-    FPSBoostOn = false,
-    DropActive = false,
-    AutoStealOn = true,
-    isStealing = false,
-    stealStart = nil,
-    StealData = {},
-    SpdC = nil,
-    LKC = nil,
-    SpdMode = "NORMAL",
-    lockCD = 0,
-    LKA = false,
-    IRS_isExecuting = false,
+    LockOn = false, SpeedBoostOn = false, InfJumpOn = false, JumpHeld = false, IJC = nil, JHC = nil,
+    BatCntOn = false, BatCntC = nil, BatCntDB = false, MedCntOn = false, MedConns = {}, MedLastUsed = 0,
+    AntiRagOn = false, AntiRagC = {}, AntiRagRC = false, AntiRagLastV = Vector3.zero,
+    AutoTPDOn = false, AutoTPDC = nil, WasLockOn = false, AntiLagOn = false, FPSBoostOn = false, DropActive = false,
+    AutoStealOn = true, isStealing = false, stealStart = nil, StealData = {},
+    SpdC = nil, LKC = nil, SpdMode = "NORMAL", lockCD = 0, LKA = false, IRS_isExecuting = false,
     SpeedPool = { 80, 195, 30, 85, 150, 195, 100, 50, 195, 195, 83, 99 },
-    CurrentIndex = 0,
-    SpoofActive = false,
-    RealSpeed = nil,
+    CurrentIndex = 0, SpoofActive = false, RealSpeed = nil,
+    justBound = false, justBoundKey = nil, ClientAntiLagOn = true,
 }
 
--- ==========================================
--- == 14. نظام الحفظ (Save System) - مُصحح ==
--- ==========================================
 local SaveData = {}
+local BX, BXLabels = {}, {}
+local MainGui = nil
+local LaggerGui = nil
+local UIElements = {}
+local HotkeyConfig = {}
+local LAG_ST = { LaggerOn = false, LaggerThread = nil, boundKey = nil, listening = false }
 
 local function LoadSave()
     local s, r = pcall(function()
-        if isfile and isfile(SAVE_KEY) then
-            return HttpService:JSONDecode(readfile(SAVE_KEY))
-        end
+        if isfile and isfile(SAVE_KEY) then return HttpService:JSONDecode(readfile(SAVE_KEY)) end
         return {}
     end)
     return s and (type(r) == "table" and r or {}) or {}
 end
 
+local _LoadedSave = LoadSave()
+
 local function SaveSave()
     pcall(function()
         if not writefile then return end
-
-        SaveData.UI = SaveData.UI or {}
-        -- حفظ مواقع الواجهات فقط إذا كانت موجودة
-        if MainGui and MainGui.Parent then
-            for name, gui in pairs({ MainGui = MainGui, LaggerGui = LaggerGui }) do
-                if gui and gui.Parent then
-                    SaveData.UI[name] = {
-                        X = gui.Position and gui.Position.X.Offset or 0,
-                        Y = gui.Position and gui.Position.Y.Offset or 0,
-                    }
-                end
-            end
-        end
-
-        -- حفظ السرعات فقط إذا كانت مربعات النص موجودة
         SaveData.Speeds = SaveData.Speeds or {}
         for k, bx in pairs(BX) do
-            if bx and bx.Parent and bx.Text ~= "" then
-                SaveData.Speeds[k] = tonumber(bx.Text)
+            if bx and bx.Parent and bx.Text ~= "" then SaveData.Speeds[k] = tonumber(bx.Text) end
+        end
+        SaveData.Lang = Lang
+        SaveData.SpdMode = ST.SpdMode
+        SaveData.Positions = SaveData.Positions or {}
+        for name, elem in pairs(UIElements) do
+            if elem and elem.Parent then
+                SaveData.Positions[name] = {
+                    X = { Scale = elem.Position.X.Scale, Offset = elem.Position.X.Offset },
+                    Y = { Scale = elem.Position.Y.Scale, Offset = elem.Position.Y.Offset }
+                }
             end
         end
-
-        SaveData.Lang = Lang
+        SaveData.Hotkeys = SaveData.Hotkeys or {}
+        for _, cfg in ipairs(HotkeyConfig) do
+            if cfg.key and cfg.saveName then SaveData.Hotkeys[cfg.saveName] = cfg.key.Name end
+        end
+        if LAG_ST.boundKey then SaveData.LaggerKey = LAG_ST.boundKey.Name else SaveData.LaggerKey = nil end
         writefile(SAVE_KEY, HttpService:JSONEncode(SaveData))
     end)
 end
 
--- تحميل اللغة فقط في البداية (الباقي يتم تحميله بعد إنشاء الواجهة)
-do
-    local data = LoadSave()
-    if data.Lang then
-        Lang = data.Lang
-    end
-end
-
--- ==========================================
--- == 15. دوال مساعدة عامة (Utilities)    ==
--- ==========================================
-local BX, BXLabels = {}, {}
+if _LoadedSave.Lang then Lang = _LoadedSave.Lang end
+if _LoadedSave.SpdMode then ST.SpdMode = _LoadedSave.SpdMode end
 
 local function SafeGetNumber(box, fallback, max)
     if not box or not box.Parent then return fallback end
@@ -543,259 +357,133 @@ local function SafeGetNumber(box, fallback, max)
     return num
 end
 
-local function gNS()
-    return ST.SpdMode == "LAGGER"
-        and SafeGetNumber(BX.LN, LIMITS.LAG_NORMAL_SPD, LIMITS.MAX_NORMAL_SPD)
-        or SafeGetNumber(BX.N, 58, LIMITS.MAX_NORMAL_SPD)
-end
-
-local function gSS()
-    return ST.SpdMode == "LAGGER"
-        and SafeGetNumber(BX.LS, LIMITS.LAG_STEAL_SPD, LIMITS.MAX_STEAL_SPD)
-        or SafeGetNumber(BX.S, 28, LIMITS.MAX_STEAL_SPD)
-end
-
-local function gJP()
-    return SafeGetNumber(BX.J, (ST.SpdMode == "LAGGER" and LIMITS.LAGGER_JUMP or LIMITS.NORMAL_JUMP), LIMITS.MAX_JUMP_PWR)
-end
-
-local function gH()
-    local c = LP.Character
-    return c and c:FindFirstChild("HumanoidRootPart")
-end
-
-local function iS()
-    local s, r = pcall(function() return LP:GetAttribute("Stealing") == true end)
-    return s and r
-end
+local function gNS() return ST.SpdMode == "LAGGER" and SafeGetNumber(BX.LN, LIMITS.LAG_NORMAL_SPD, LIMITS.MAX_NORMAL_SPD) or SafeGetNumber(BX.N, 58, LIMITS.MAX_NORMAL_SPD) end
+local function gSS() return ST.SpdMode == "LAGGER" and SafeGetNumber(BX.LS, LIMITS.LAG_STEAL_SPD, LIMITS.MAX_STEAL_SPD) or SafeGetNumber(BX.S, 28, LIMITS.MAX_STEAL_SPD) end
+local function gJP() return SafeGetNumber(BX.J, (ST.SpdMode == "LAGGER" and LIMITS.LAGGER_JUMP or LIMITS.NORMAL_JUMP), LIMITS.MAX_JUMP_PWR) end
+local function gH() local c = LP.Character return c and c:FindFirstChild("HumanoidRootPart") end
+local function iS() local s, r = pcall(function() return LP:GetAttribute("Stealing") == true end) return s and r end
 
 local function FindBat()
-    local c = LP.Character
-    local bp = LP:FindFirstChildOfClass("Backpack")
-    if c then
-        for _, i in ipairs(c:GetChildren()) do
-            if i:IsA("Tool") and (i.Name:lower():find("bat") or i.Name:lower():find("baseball")) then
-                return i
-            end
-        end
-    end
-    if bp then
-        for _, i in ipairs(bp:GetChildren()) do
-            if i:IsA("Tool") and (i.Name:lower():find("bat") or i.Name:lower():find("baseball")) then
-                pcall(function() LP.Character.Humanoid:EquipTool(i) end)
-                task.wait(0.05)
-                return i
-            end
-        end
-    end
+    local c = LP.Character local bp = LP:FindFirstChildOfClass("Backpack")
+    if c then for _, i in ipairs(c:GetChildren()) do if i:IsA("Tool") and (i.Name:lower():find("bat") or i.Name:lower():find("baseball")) then return i end end end
+    if bp then for _, i in ipairs(bp:GetChildren()) do if i:IsA("Tool") and (i.Name:lower():find("bat") or i.Name:lower():find("baseball")) then pcall(function() LP.Character.Humanoid:EquipTool(i) end) task.wait(0.05) return i end end end
     return nil
 end
 
 local function FindNearest()
-    local h = gH()
-    if not h then return nil end
+    local h = gH() if not h then return nil end
     local n, md = nil, math.huge
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LP and p.Character then
             local o = p.Character:FindFirstChild("HumanoidRootPart")
-            if o then
-                local d = (h.Position - o.Position).Magnitude
-                if d < md then
-                    md = d
-                    n = p
-                end
-            end
+            if o then local d = (h.Position - o.Position).Magnitude if d < md then md = d n = p end end
         end
     end
     return n
 end
 
--- ==========================================
--- == 16. نظام الهوك المُصحح (Hooks - Fixed) ==
--- ==========================================
 local OriginalIndex = nil
 local OriginalNewIndex = nil
 
 local function InstallHooks()
     local mt = getrawmetatable(game)
     setreadonly(mt, false)
-
     OriginalIndex = hookfunction(mt.__index, function(self, key)
-        -- فحص أن الهوك يعمل فقط على هيومانيد اللاعب المحلي
         if ST.SpoofActive and typeof(self) == "Instance" and self:IsA("Humanoid") and key == "WalkSpeed" then
             local char = self.Parent
-            if char and Players:GetPlayerFromCharacter(char) == LP then
-                return ST.SpeedPool[ST.CurrentIndex] or 16
-            end
+            if char and Players:GetPlayerFromCharacter(char) == LP then return ST.SpeedPool[ST.CurrentIndex] or 16 end
         end
         return OriginalIndex(self, key)
     end)
-
     OriginalNewIndex = hookfunction(mt.__newindex, function(self, key, value)
         if ST.SpoofActive and typeof(self) == "Instance" and self:IsA("Humanoid") and key == "WalkSpeed" then
             local char = self.Parent
-            if char and Players:GetPlayerFromCharacter(char) == LP then
-                ST.RealSpeed = value
-                return OriginalNewIndex(self, key, ST.SpeedPool[ST.CurrentIndex] or 16)
-            end
+            if char and Players:GetPlayerFromCharacter(char) == LP then ST.RealSpeed = value return OriginalNewIndex(self, key, ST.SpeedPool[ST.CurrentIndex] or 16) end
         end
         return OriginalNewIndex(self, key, value)
     end)
-
     setreadonly(mt, true)
-
-    -- حفظ مرجع للتنظيف
     _G.ExtOriginalIndex = OriginalIndex
     _G.ExtOriginalNewIndex = OriginalNewIndex
 end
-
 pcall(InstallHooks)
 
 local function IRS_ActivateReset()
     if ST.IRS_isExecuting then return end
-    local char = LP.Character
-    if not char then return end
+    local char = LP.Character if not char then return end
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hum or hum.Health <= 0 then return end
-
     ST.IRS_isExecuting = true
-    PS(SFX.Tgl)
     ST.CurrentIndex = ST.CurrentIndex + 1
-    if ST.CurrentIndex > #ST.SpeedPool then
-        ST.CurrentIndex = 1
-    end
-
+    if ST.CurrentIndex > #ST.SpeedPool then ST.CurrentIndex = 1 end
     ST.RealSpeed = hum.WalkSpeed
     ST.SpoofActive = true
-
     task.delay(0.9, function()
         ST.SpoofActive = false
-        if hum and hum.Parent then
-            hum.WalkSpeed = ST.RealSpeed
-        end
-        task.delay(0.2, function()
-            ST.IRS_isExecuting = false
-        end)
+        if hum and hum.Parent then hum.WalkSpeed = ST.RealSpeed end
+        task.delay(0.2, function() ST.IRS_isExecuting = false end)
     end)
 end
 
--- ==========================================
--- == 17. نظام اللاقر المُصحح (Eternal Lagger - Fixed) ==
--- ==========================================
-local LAG_ST = {
-    LaggerOn = false,
-    LaggerThread = nil,
-    boundKey = nil,
-    listening = false,
-}
-
--- 🔧 إصلاح: البحث عن الريموت بطريقة آمنة بدون أخطاء
 local CachedRemote = nil
 local RemoteSearched = false
 
 local function resolveRemote(path)
     if not path or path == "" then return nil end
     local ok, result = pcall(function()
-        local obj = game
-        local cleaned = path:gsub("^game%.", "")
+        local obj = game local cleaned = path:gsub("^game%.", "")
         for seg in cleaned:gmatch("[^%.]+") do
             if obj then
-                -- استخدام FindFirstChild بدل الأقواس لتجنب الخطأ
-                if typeof(obj) == "Instance" then
-                    obj = obj:FindFirstChild(seg)
-                else
-                    obj = obj[seg]
-                end
-            else
-                return nil
-            end
+                if typeof(obj) == "Instance" then obj = obj:FindFirstChild(seg) else obj = obj[seg] end
+            else return nil end
         end
         return obj
     end)
-    if ok and result and typeof(result) == "Instance" then
-        return result
-    end
+    if ok and result and typeof(result) == "Instance" then return result end
     return nil
 end
 
--- البحث عن أي ريموت متاح في اللعبة
 local function FindAnyRemote()
-    if CachedRemote then
-        -- التأكد أن الريموت لا يزال موجوداً
-        if CachedRemote.Parent then return CachedRemote end
-        CachedRemote = nil
-    end
-    if RemoteSearched and not CachedRemote then return nil end
-
-    -- البحث في المسارات المعروفة أولاً
+    if CachedRemote then if CachedRemote.Parent then return CachedRemote end CachedRemote = nil RemoteSearched = false end
     for _, path in ipairs(REMOTE_PATHS) do
         local remote = resolveRemote(path)
-        if remote then
-            CachedRemote = remote
-            RemoteSearched = true
-            return remote
-        end
+        if remote then CachedRemote = remote RemoteSearched = true return remote end
     end
-
-    -- البحث الديناميكي في ReplicatedStorage
     pcall(function()
         local RS = game:GetService("ReplicatedStorage")
         for _, child in ipairs(RS:GetDescendants()) do
             if child:IsA("RemoteEvent") or child:IsA("UnreliableRemoteEvent") or child:IsA("RemoteFunction") then
-                CachedRemote = child
-                RemoteSearched = true
-                return
+                CachedRemote = child RemoteSearched = true return
             end
         end
     end)
-
-    RemoteSearched = true
-    return CachedRemote
+    RemoteSearched = true return CachedRemote
 end
 
--- 🔧 إصلاح: دالة bomb كانت فيها مرجع nil بسبب ترتيب المتغيرات
-local function bomb(tblInc, tries, maxTbl)
-    local mainTbl = {}
-    local nested = {}
-    local z = nested
+local function createLagPayload(tc, bs)
+    local m = {} local n = {} local z = n
+    for i = 1, tc do local ins = {} table.insert(z, ins) z = ins end
+    local mi = math.floor(bs / (tc + 2))
+    for i = 1, mi do table.insert(m, n) if i % 8000 == 0 then task.wait() end end
+    return m
+end
 
-    for i = 1, tblInc do
-        local ins = {}
-        table.insert(z, ins)
-        z = ins
-    end
-
-    local maximum = math.floor((maxTbl or 150000) / (tblInc + 2))
-    for i = 1, maximum do
-        table.insert(mainTbl, nested)
-        if i % 8000 == 0 then
-            task.wait()
-        end
-    end
-
-    -- 🔧 إصلاح: البحث عن الريموت بطريقة آمنة + إعادة البحث إذا ما لقيناه
-    local remote = FindAnyRemote()
-    if remote and remote.Parent then
-        for i = 1, tries do
-            pcall(function()
-                if remote:IsA("RemoteEvent") or remote:IsA("UnreliableRemoteEvent") then
-                    remote:FireServer(mainTbl)
-                elseif remote:IsA("RemoteFunction") then
-                    remote:InvokeServer(mainTbl)
-                end
-            end)
-        end
+local function sendLagPayload(p)
+    local r = FindAnyRemote()
+    if r and r.Parent then
+        pcall(function()
+            if r:IsA("RemoteEvent") or r:IsA("UnreliableRemoteEvent") then r:FireServer(p)
+            elseif r:IsA("RemoteFunction") then r:InvokeServer(p) end
+        end)
     end
 end
 
 local function startLaggerLoop()
     while LAG_ST.LaggerOn and _G.ExtRunning and CoreActive do
-        pcall(function()
-            game:GetService("NetworkClient"):SetOutgoingKBPSLimit(math.huge)
-        end)
-
-        task.spawn(bomb, LAG_CONFIG.tables, LAG_CONFIG.tries, LAG_CONFIG.maxTbl)
-        task.wait(math.max(LAG_CONFIG.loopWait, 0.1))
+        pcall(function() game:GetService("NetworkClient"):SetOutgoingKBPSLimit(math.huge) end)
+        local payload = createLagPayload(LAG_CONFIG.tables, LAG_CONFIG.batchSize)
+        task.spawn(sendLagPayload, payload)
+        task.wait(math.max(LAG_CONFIG.loopWait, 0.05))
     end
 end
 
@@ -809,179 +497,126 @@ end
 
 local function stopLagger()
     LAG_ST.LaggerOn = false
-    if LAG_ST.LaggerThread then
-        pcall(function() coroutine.close(LAG_ST.LaggerThread) end)
-        LAG_ST.LaggerThread = nil
-        _G.ExtLagThread = nil
-    end
-    pcall(function()
-        game:GetService("NetworkClient"):SetOutgoingKBPSLimit(10000)
-    end)
+    if LAG_ST.LaggerThread then pcall(function() coroutine.close(LAG_ST.LaggerThread) end) LAG_ST.LaggerThread = nil _G.ExtLagThread = nil end
+    pcall(function() game:GetService("NetworkClient"):SetOutgoingKBPSLimit(10000) end)
 end
 
--- ==========================================
--- == 18. نظام القفل (Lock System)        ==
--- ==========================================
+local ClientAntiLagConnections = {}
+
+local function StartClientAntiLag()
+    if not ST.ClientAntiLagOn then return end
+    for _, c in ipairs(ClientAntiLagConnections) do pcall(function() c:Disconnect() end) end
+    ClientAntiLagConnections = {}
+    local function hookR(r)
+        if not r or not r.Parent then return end
+        pcall(function()
+            if r:IsA("RemoteEvent") or r:IsA("UnreliableRemoteEvent") then
+                table.insert(ClientAntiLagConnections, r.OnClientEvent:Connect(function() return end))
+            end
+        end)
+    end
+    for _, path in ipairs(REMOTE_PATHS) do local r = resolveRemote(path) if r then hookR(r) end end
+    pcall(function()
+        table.insert(ClientAntiLagConnections, game:GetService("ReplicatedStorage").DescendantAdded:Connect(function(d)
+            if d:IsA("RemoteEvent") or d:IsA("UnreliableRemoteEvent") then task.wait(0.5) hookR(d) end
+        end))
+    end)
+    task.spawn(function()
+        while _G.ExtRunning and CoreActive and ST.ClientAntiLagOn do
+            pcall(function()
+                for _, ch in ipairs(CoreGui:GetChildren()) do if (ch.Name:find("BlockList") or ch.Name:find("PlayerBlock")) and not ch:GetAttribute("ExtAuth") then pcall(function() ch:Destroy() end) end end
+                local pg = LP:FindFirstChildOfClass("PlayerGui")
+                if pg then for _, ch in ipairs(pg:GetChildren()) do if ch.Name:find("BlockList") or ch.Name:find("PlayerBlock") then pcall(function() ch:Destroy() end) end end end
+            end)
+            task.wait(2)
+        end
+    end)
+end
+StartClientAntiLag()
+
 local function sP()
-    ST.LKA = false
-    ST.LockOn = false
+    ST.LKA = false ST.LockOn = false
     local h = gH()
     if h then
         pcall(function()
             h.Velocity = Vector3.new(0, h.Velocity.Y, 0)
-            local a = h:FindFirstChild("LockAngVel")
-            if a then a:Destroy() end
-            local t = h:FindFirstChild("LockBodyAtt")
-            if t then t:Destroy() end
+            local a = h:FindFirstChild("LockAngVel") if a then a:Destroy() end
+            local t = h:FindFirstChild("LockBodyAtt") if t then t:Destroy() end
         end)
     end
 end
 
 local function tLK()
-    ST.LKA = not ST.LKA
-    ST.LockOn = ST.LKA
+    ST.LKA = not ST.LKA ST.LockOn = ST.LKA
     if ST.LKA then
-        PS(SFX.Tgl)
-        ST.lockCD = 0
-        local h = gH()
-        if not h then
-            ST.LKA = false
-            ST.LockOn = false
-            return
-        end
-
+        ST.lockCD = 0 local h = gH()
+        if not h then ST.LKA = false ST.LockOn = false return end
         pcall(function()
-            local at = h:FindFirstChild("LockBodyAtt") or Instance.new("Attachment", h)
-            at.Name = "LockBodyAtt"
-            local a = h:FindFirstChild("LockAngVel") or Instance.new("AngularVelocity")
-            a.Name = "LockAngVel"
-            a.Attachment0 = at
-            a.AngularVelocity = Vector3.new(0, 0, 0)
-            a.MaxTorque = 80000
-            a.ReactionTorqueEnabled = false
-            a.Parent = h
+            local at = h:FindFirstChild("LockBodyAtt") or Instance.new("Attachment", h) at.Name = "LockBodyAtt"
+            local a = h:FindFirstChild("LockAngVel") or Instance.new("AngularVelocity") a.Name = "LockAngVel"
+            a.Attachment0 = at a.AngularVelocity = Vector3.new(0, 0, 0) a.MaxTorque = 80000 a.ReactionTorqueEnabled = false a.Parent = h
         end)
-
         ST.LKC = Trk(RunService.Heartbeat:Connect(function(dt)
             if not ST.LKA or not _G.ExtRunning then return end
             local h = gH()
-            if not h or not h.Parent then
-                ST.LKA = false
-                ST.LockOn = false
-                return
-            end
-
+            if not h or not h.Parent then ST.LKA = false ST.LockOn = false return end
             local t = FindNearest()
             if t and t.Character then
                 local e = t.Character:FindFirstChild("HumanoidRootPart")
                 if e then
-                    local d = e.Position - h.Position
-                    local yDiff = e.Position.Y - h.Position.Y
-                    local lockSpeed = gNS()
-                    local targetFrontDir = Vector3.new(0, 0, -1)
-                    local hrpLook = Vector3.new(e.CFrame.LookVector.X, 0, e.CFrame.LookVector.Z)
-
-                    if hrpLook.Magnitude > 0.01 then
-                        targetFrontDir = hrpLook.Unit
-                    elseif d.Magnitude > 0.01 then
-                        targetFrontDir = Vector3.new(d.X, 0, d.Z).Unit
-                    end
-
-                    local positionInFront = e.Position + (targetFrontDir * LOCK_DIST)
-                    local toFront = positionInFront - h.Position
-                    local distToFront = Vector3.new(toFront.X, 0, toFront.Z).Magnitude
-                    local hVel = Vector3.new(0, 0, 0)
-
-                    if distToFront > 2 then
-                        if toFront.Magnitude > 0.5 then
-                            local flatTo = Vector3.new(toFront.X, 0, toFront.Z)
-                            if flatTo.Magnitude > 0.5 then
-                                hVel = flatTo.Unit * lockSpeed
-                            end
-                        end
-                    elseif distToFront > 0.5 then
-                        hVel = Vector3.new(toFront.X, 0, toFront.Z) * 5
-                    else
-                        hVel = Vector3.new(0, 0, 0)
-                    end
-
-                    local yVel = 0
-                    if math.abs(yDiff) > 3 then
-                        yVel = yDiff > 0 and MAX_VS or -MAX_VS
-                    elseif math.abs(yDiff) > 0.5 then
-                        yVel = math.clamp(yDiff * 15, -MAX_VS, MAX_VS)
-                    else
-                        yVel = 0
-                    end
-
-                    h.Velocity = Vector3.new(hVel.X, yVel, hVel.Z)
-
+                    local d = e.Position - h.Position local yD = e.Position.Y - h.Position.Y local lS = gNS()
+                    pcall(function() local lhm = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid") if lhm then lhm.WalkSpeed = lS end end)
+                    local tfD = Vector3.new(0, 0, -1)
+                    local hL = Vector3.new(e.CFrame.LookVector.X, 0, e.CFrame.LookVector.Z)
+                    if hL.Magnitude > 0.01 then tfD = hL.Unit elseif d.Magnitude > 0.01 then tfD = Vector3.new(d.X, 0, d.Z).Unit end
+                    local pIF = e.Position + (tfD * LOCK_DIST) local tF = pIF - h.Position
+                    local dTF = Vector3.new(tF.X, 0, tF.Z).Magnitude local hV = Vector3.new(0, 0, 0)
+                    if dTF > 2 then
+                        if tF.Magnitude > 0.5 then local fT = Vector3.new(tF.X, 0, tF.Z) if fT.Magnitude > 0.5 then hV = fT.Unit * lS end end
+                    elseif dTF > 0.5 then hV = Vector3.new(tF.X, 0, tF.Z) * 5
+                    else hV = Vector3.new(0, 0, 0) end
+                    local yV = 0
+                    if math.abs(yD) > 3 then yV = yD > 0 and math.min(MAX_VS, yD * 10) or math.max(-MAX_VS, yD * 10)
+                    elseif math.abs(yD) > 0.5 then yV = math.clamp(yD * 15, -MAX_VS, MAX_VS)
+                    else yV = h.Velocity.Y end
+                    h.Velocity = Vector3.new(hV.X, yV, hV.Z)
                     pcall(function()
                         local a = h:FindFirstChild("LockAngVel")
                         if a and d.Magnitude > 0.5 then
-                            local desiredCF = CFrame.lookAt(h.Position, e.Position)
-                            local relCF = h.CFrame:ToObjectSpace(desiredCF)
-                            local axis, angle = relCF:ToAxisAngle()
-                            if angle > 0.01 then
-                                local worldAxis = h.CFrame:VectorToWorldSpace(axis)
-                                a.AngularVelocity = worldAxis * math.min(angle * 20, 12) * Vector3.new(1, 1, 0.1)
-                            else
-                                a.AngularVelocity = Vector3.new(0, 0, 0)
-                            end
+                            local dCF = CFrame.lookAt(h.Position, e.Position) local rCF = h.CFrame:ToObjectSpace(dCF)
+                            local ax, an = rCF:ToAxisAngle()
+                            if an > 0.01 then a.AngularVelocity = h.CFrame:VectorToWorldSpace(ax) * math.min(an * 20, 12) * Vector3.new(1, 1, 0.1)
+                            else a.AngularVelocity = Vector3.new(0, 0, 0) end
                         end
                     end)
-
                     ST.lockCD = ST.lockCD - dt
-                    if ST.lockCD <= 0 then
-                        local tl = FindBat()
-                        if tl then pcall(function() tl:Activate() end) end
-                        ST.lockCD = 0.08
-                    end
+                    if ST.lockCD <= 0 then local tl = FindBat() if tl then pcall(function() tl:Activate() end) end ST.lockCD = 0.08 end
                 end
             else
-                h.Velocity = h.Velocity * 0.9
-                pcall(function()
-                    local a = h:FindFirstChild("LockAngVel")
-                    if a then a.AngularVelocity = a.AngularVelocity * 0.9 end
-                end)
+                h.Velocity = Vector3.new(0, h.Velocity.Y, 0)
+                pcall(function() local a = h:FindFirstChild("LockAngVel") if a then a.AngularVelocity = Vector3.new(0, 0, 0) end end)
             end
         end))
         _G.ExtLockC = ST.LKC
     else
-        PS(SFX.Tgl)
-        if ST.LKC then
-            ST.LKC:Disconnect()
-            ST.LKC = nil
-        end
+        if ST.LKC then ST.LKC:Disconnect() ST.LKC = nil end
         sP()
     end
 end
 
--- ==========================================
--- == 19. أنظمة الحركة (Speed & Jump)     ==
--- ==========================================
-local function StopSpeed()
-    if ST.SpdC then
-        ST.SpdC:Disconnect()
-        ST.SpdC = nil
-    end
-end
+local function StopSpeed() if ST.SpdC then ST.SpdC:Disconnect() ST.SpdC = nil end end
 
 local function StartSpeed()
     if ST.SpdC then return end
     ST.SpdC = Trk(RunService.Heartbeat:Connect(function()
         if not ST.SpeedBoostOn or not _G.ExtRunning or ST.LockOn then return end
-        local c = LP.Character
-        if not c then return end
-        local hm = c:FindFirstChildOfClass("Humanoid")
-        local hr = c:FindFirstChild("HumanoidRootPart")
+        if ST.DropActive then return end
+        local c = LP.Character if not c then return end
+        local hm = c:FindFirstChildOfClass("Humanoid") local hr = c:FindFirstChild("HumanoidRootPart")
         if not hm or not hr or not hr.Parent then return end
-        local md = hm.MoveDirection
-        local tSpd = iS() and gSS() or gNS()
+        local md = hm.MoveDirection local tS = iS() and gSS() or gNS()
         if md.Magnitude > 0.01 then
-            hr.Velocity = Vector3.new(md.X * tSpd, hr.Velocity.Y, md.Z * tSpd)
-        else
-            hr.Velocity = Vector3.new(0, hr.Velocity.Y, 0)
+            hr.Velocity = Vector3.new(md.X * tS, hr.Velocity.Y, md.Z * tS)
         end
     end))
     _G.ExtSpdC = ST.SpdC
@@ -989,35 +624,21 @@ end
 
 local function ToggleSpeed()
     ST.SpeedBoostOn = not ST.SpeedBoostOn
-    PS(SFX.Tgl)
-    if ST.SpeedBoostOn then
-        StartSpeed()
-    else
-        StopSpeed()
-        local h = gH()
-        if h then h.Velocity = Vector3.new(0, h.Velocity.Y, 0) end
-    end
+    if ST.SpeedBoostOn then StartSpeed()
+    else StopSpeed() end
 end
 
 local function ToggleInfJump()
     ST.InfJumpOn = not ST.InfJumpOn
-    PS(SFX.Tgl)
     if ST.InfJumpOn then
         ST.IJC = Trk(UIS.JumpRequest:Connect(function()
             if not ST.InfJumpOn then return end
-            local hr = gH()
-            if hr and hr.Parent then
-                hr.Velocity = Vector3.new(hr.Velocity.X, gJP(), hr.Velocity.Z)
-            end
+            local hr = gH() if hr and hr.Parent then hr.Velocity = Vector3.new(hr.Velocity.X, gJP(), hr.Velocity.Z) end
         end))
-
         ST.JHC = Trk(RunService.Heartbeat:Connect(function()
             if not ST.InfJumpOn or not ST.JumpHeld then return end
-            local hm = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-            local hr = gH()
-            if hm and hr and hr.Parent
-                and (hm:GetState() == Enum.HumanoidStateType.Freefall
-                    or hm:GetState() == Enum.HumanoidStateType.Jumping) then
+            local hm = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid") local hr = gH()
+            if hm and hr and hr.Parent and (hm:GetState() == Enum.HumanoidStateType.Freefall or hm:GetState() == Enum.HumanoidStateType.Jumping) then
                 hr.Velocity = Vector3.new(hr.Velocity.X, gJP(), hr.Velocity.Z)
             end
         end))
@@ -1028,289 +649,129 @@ local function ToggleInfJump()
     end
 end
 
-Trk(UIS.InputBegan:Connect(function(i, g)
-    if g then return end
-    if i.KeyCode == Enum.KeyCode.Space then ST.JumpHeld = true end
-end))
+Trk(UIS.InputBegan:Connect(function(i, g) if g then return end if i.KeyCode == Enum.KeyCode.Space then ST.JumpHeld = true end end))
+Trk(UIS.InputEnded:Connect(function(i) if i.KeyCode == Enum.KeyCode.Space then ST.JumpHeld = false end end))
 
-Trk(UIS.InputEnded:Connect(function(i)
-    if i.KeyCode == Enum.KeyCode.Space then ST.JumpHeld = false end
-end))
+local function DisableAR() ST.AntiRagOn = false ST.AntiRagRC = false for _, c in pairs(ST.AntiRagC) do pcall(function() c:Disconnect() end) end ST.AntiRagC = {} end
 
--- ==========================================
--- == 20. نظام مضاد السقوط (Anti Ragdoll) ==
--- ==========================================
-local function DisableAntiRag()
-    ST.AntiRagOn = false
-    ST.AntiRagRC = false
-    for _, con in pairs(ST.AntiRagC) do
-        pcall(function() con:Disconnect() end)
-    end
-    ST.AntiRagC = {}
-end
-
-local function CleanConstraints(char)
-    for _, o in pairs(char:GetDescendants()) do
-        if o:IsA("BallSocketConstraint") or o:IsA("NoCollisionConstraint")
-            or o:IsA("HingeConstraint") or o:IsA("BodyVelocity")
-            or o:IsA("BodyPosition") or o:IsA("BodyGyro")
-            or o:IsA("AlignOrientation") then
-            o:Destroy()
-        elseif o:IsA("Attachment") and (o.Name == "A" or o.Name == "B") then
-            o:Destroy()
-        elseif o:IsA("Motor6D") then
-            o.Enabled = true
-        end
+local function CleanCon(ch)
+    for _, o in pairs(ch:GetDescendants()) do
+        if o:IsA("BallSocketConstraint") or o:IsA("NoCollisionConstraint") or o:IsA("HingeConstraint") or o:IsA("BodyVelocity") or o:IsA("BodyPosition") or o:IsA("BodyGyro") or o:IsA("AlignOrientation") then o:Destroy()
+        elseif o:IsA("Attachment") and (o.Name == "A" or o.Name == "B") then o:Destroy()
+        elseif o:IsA("Motor6D") then o.Enabled = true end
     end
 end
 
-local function ReEnableControls()
-    pcall(function()
-        require(LP:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule")):GetControls():Enable()
-    end)
-end
+local function ReEnCtrl() pcall(function() require(LP:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule")):GetControls():Enable() end) end
 
-local function EnableAntiRag()
-    if ST.AntiRagOn then
-        DisableAntiRag()
-        return
-    end
-    ST.AntiRagOn = true
-    ST.AntiRagRC = false
-    ST.AntiRagLastV = Vector3.zero
-    local c = LP.Character or LP.CharacterAdded:Wait()
-    local h = c:WaitForChild("Humanoid")
-    local r = c:WaitForChild("HumanoidRootPart")
-
-    pcall(function()
-        h:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-        h:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-        h:SetStateEnabled(Enum.HumanoidStateType.GettingUp, false)
-    end)
-
-    local BS = {
-        [Enum.HumanoidStateType.Physics] = true,
-        [Enum.HumanoidStateType.Ragdoll] = true,
-        [Enum.HumanoidStateType.FallingDown] = true,
-        [Enum.HumanoidStateType.GettingUp] = true,
-    }
-
-    local function IsRagState() return BS[h:GetState()] == true end
-
-    local function StartRecovery()
-        if ST.AntiRagRC then return end
-        ST.AntiRagRC = true
-        task.spawn(function()
-            local eT = tick() + 0.5
-            while tick() < eT do
-                if IsRagState() or h:GetState() == Enum.HumanoidStateType.GettingUp then
-                    CleanConstraints(c)
-                    pcall(function() h:ChangeState(Enum.HumanoidStateType.Running) end)
-                    local v = r.Velocity
-                    if v.Magnitude > 30 then
-                        r.Velocity = Vector3.new(0, math.min(v.Y, 5), 0)
+local function EnableAR()
+    if ST.AntiRagOn then DisableAR() return end
+    ST.AntiRagOn = true ST.AntiRagRC = false ST.AntiRagLastV = Vector3.zero
+    local function setupForChar(c)
+        if not c then return end
+        local h = c:WaitForChild("Humanoid", 5) local r = c:WaitForChild("HumanoidRootPart", 5)
+        if not h or not r then return end
+        pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false) h:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false) h:SetStateEnabled(Enum.HumanoidStateType.GettingUp, false) end)
+        local BS = { [Enum.HumanoidStateType.Physics] = true, [Enum.HumanoidStateType.Ragdoll] = true, [Enum.HumanoidStateType.FallingDown] = true, [Enum.HumanoidStateType.GettingUp] = true }
+        local IsRag = function() return BS[h:GetState()] == true end
+        local StartRec = function()
+            if ST.AntiRagRC then return end ST.AntiRagRC = true
+            task.spawn(function()
+                local eT = tick() + 0.5
+                while tick() < eT do
+                    if IsRag() or h:GetState() == Enum.HumanoidStateType.GettingUp then
+                        CleanCon(c) pcall(function() h:ChangeState(Enum.HumanoidStateType.Running) end)
+                        local v = r.Velocity if v.Magnitude > 30 then r.Velocity = Vector3.new(0, math.min(v.Y, 5), 0) end
+                        workspace.CurrentCamera.CameraSubject = h ReEnCtrl()
                     end
-                    workspace.CurrentCamera.CameraSubject = h
-                    ReEnableControls()
+                    pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false) h:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false) end)
+                    task.wait(0.02)
                 end
-                pcall(function()
-                    h:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-                    h:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-                end)
-                task.wait(0.02)
-            end
-            ST.AntiRagRC = false
-        end)
+                ST.AntiRagRC = false
+            end)
+        end
+        table.insert(ST.AntiRagC, h.StateChanged:Connect(function(_, nS) if BS[nS] then StartRec() end end))
+        table.insert(ST.AntiRagC, RunService.Heartbeat:Connect(function()
+            if IsRag() then StartRec() local v = r.Velocity if (v - ST.AntiRagLastV).Magnitude > 50 and v.Magnitude > 20 then r.Velocity = Vector3.new(0, math.min(v.Y, 5), 0) end end
+            ST.AntiRagLastV = r.Velocity
+        end))
+        table.insert(ST.AntiRagC, c.DescendantAdded:Connect(function(o)
+            if o:IsA("BallSocketConstraint") or o:IsA("NoCollisionConstraint") or o:IsA("HingeConstraint") or o:IsA("BodyVelocity") or o:IsA("BodyPosition") or o:IsA("BodyGyro") or o:IsA("AlignOrientation") then task.defer(function() if o and o.Parent then o:Destroy() end end)
+            elseif o:IsA("Motor6D") then task.defer(function() if o and o.Parent then o.Enabled = true end end) end
+        end))
+        ReEnCtrl() CleanCon(c)
     end
-
-    table.insert(ST.AntiRagC, h.StateChanged:Connect(function(_, nS)
-        if BS[nS] then StartRecovery() end
-    end))
-
-    table.insert(ST.AntiRagC, RunService.Heartbeat:Connect(function()
-        if IsRagState() then
-            StartRecovery()
-            local v = r.Velocity
-            local vD = (v - ST.AntiRagLastV).Magnitude
-            if vD > 50 and v.Magnitude > 20 then
-                r.Velocity = Vector3.new(0, math.min(v.Y, 5), 0)
-            end
-        end
-        ST.AntiRagLastV = r.Velocity
-    end))
-
-    table.insert(ST.AntiRagC, c.DescendantAdded:Connect(function(o)
-        if o:IsA("BallSocketConstraint") or o:IsA("NoCollisionConstraint")
-            or o:IsA("HingeConstraint") or o:IsA("BodyVelocity")
-            or o:IsA("BodyPosition") or o:IsA("BodyGyro")
-            or o:IsA("AlignOrientation") then
-            task.defer(function() if o and o.Parent then o:Destroy() end end)
-        elseif o:IsA("Motor6D") then
-            task.defer(function() if o and o.Parent then o.Enabled = true end end)
-        end
-    end))
-
-    ReEnableControls()
-    CleanConstraints(c)
-
-    -- 🔧 إصلاح: إعادة تفعيل الأنترراغدول عند إعادة الميلاد
-    Trk(LP.CharacterAdded:Connect(function(newChar)
-        if not ST.AntiRagOn then return end
-        task.wait(1)
-        pcall(function()
-            local newHum = newChar:WaitForChild("Humanoid", 5)
-            if newHum then
-                newHum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-                newHum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-                newHum:SetStateEnabled(Enum.HumanoidStateType.GettingUp, false)
-            end
-        end)
-    end))
+    if LP.Character then setupForChar(LP.Character) end
+    Trk(LP.CharacterAdded:Connect(function(nc) if not ST.AntiRagOn then return end task.wait(1) setupForChar(nc) end))
 end
 
--- ==========================================
--- == 21. أنظمة العدادات (Bat & Medusa)   ==
--- ==========================================
-local function StopBatCnt()
-    if ST.BatCntC then
-        ST.BatCntC:Disconnect()
-        ST.BatCntC = nil
-    end
-    ST.BatCntDB = false
-end
+local function StopBC() if ST.BatCntC then ST.BatCntC:Disconnect() ST.BatCntC = nil end ST.BatCntDB = false end
 
-local function StartBatCnt()
+local function StartBC()
     if ST.BatCntC then return end
-    local function bind(char)
-        task.wait(1)
-        local hum = char:WaitForChild("Humanoid", 5)
-        if not hum then return end
-        Trk(hum.StateChanged:Connect(function(_, ns)
+    local function bind(ch)
+        task.wait(1) local hm = ch:WaitForChild("Humanoid", 5) if not hm then return end
+        Trk(hm.StateChanged:Connect(function(_, ns)
             if not ST.BatCntOn or ST.BatCntDB then return end
-            if ns == Enum.HumanoidStateType.Ragdoll
-                or ns == Enum.HumanoidStateType.FallingDown
-                or ns == Enum.HumanoidStateType.Physics then
+            if ns == Enum.HumanoidStateType.Ragdoll or ns == Enum.HumanoidStateType.FallingDown or ns == Enum.HumanoidStateType.Physics then
                 ST.BatCntDB = true
                 task.spawn(function()
-                    local bat = FindBat()
-                    if bat then
-                        pcall(function() bat:Activate() end)
-                        task.wait(0.12)
-                        pcall(function() bat:Activate() end)
-                    end
-                    task.wait(0.4)
-                    ST.BatCntDB = false
+                    local b = FindBat() if b then pcall(function() b:Activate() end) task.wait(0.12) pcall(function() b:Activate() end) end
+                    task.wait(0.4) ST.BatCntDB = false
                 end)
             end
         end))
     end
-    ST.BatCntC = Trk(LP.CharacterAdded:Connect(function(c)
-        task.wait(1)
-        if ST.BatCntOn then bind(c) end
-    end))
-
+    ST.BatCntC = Trk(LP.CharacterAdded:Connect(function(c) task.wait(1) if ST.BatCntOn then bind(c) end end))
     if LP.Character then bind(LP.Character) end
 end
 
-local function OnAnchor(part)
-    return part:GetPropertyChangedSignal("Anchored"):Connect(function()
-        if part.Anchored and part.Transparency == 1 and ST.MedCntOn then
-            if tick() - ST.MedLastUsed < 20 then return end
-            ST.MedLastUsed = tick()
+local function OnAnchor(p)
+    return p:GetPropertyChangedSignal("Anchored"):Connect(function()
+        if p.Anchored and p.Transparency == 1 and ST.MedCntOn then
+            if tick() - ST.MedLastUsed < 20 then return end ST.MedLastUsed = tick()
             task.spawn(function()
-                local c = LP.Character
-                if not c then return end
-                -- البحث في الشخصية أولاً
-                for _, t in ipairs(c:GetChildren()) do
-                    if t:IsA("Tool") and t.Name:lower():find("medusa") then
-                        if t.Parent ~= c then
-                            pcall(function() c:FindFirstChildOfClass("Humanoid"):EquipTool(t) end)
-                        end
-                        pcall(function() t:Activate() end)
-                        return
-                    end
-                end
-                -- البحث في الحقيبة
+                local c = LP.Character if not c then return end
+                for _, t in ipairs(c:GetChildren()) do if t:IsA("Tool") and t.Name:lower():find("medusa") then pcall(function() t:Activate() end) return end end
                 local bp = LP:FindFirstChild("Backpack")
-                if bp then
-                    for _, t in ipairs(bp:GetChildren()) do
-                        if t:IsA("Tool") and t.Name:lower():find("medusa") then
-                            pcall(function() c:FindFirstChildOfClass("Humanoid"):EquipTool(t) end)
-                            pcall(function() t:Activate() end)
-                            return
-                        end
-                    end
-                end
+                if bp then for _, t in ipairs(bp:GetChildren()) do if t:IsA("Tool") and t.Name:lower():find("medusa") then pcall(function() c:FindFirstChildOfClass("Humanoid"):EquipTool(t) end) pcall(function() t:Activate() end) return end end end
             end)
         end
     end)
 end
 
-local function SetupMedusa(char)
-    for _, c in pairs(ST.MedConns) do
-        pcall(function() c:Disconnect() end)
-    end
-    ST.MedConns = {}
-    if not char then return end
-    for _, p in ipairs(char:GetDescendants()) do
-        if p:IsA("BasePart") then
-            table.insert(ST.MedConns, OnAnchor(p))
-        end
-    end
-    table.insert(ST.MedConns, char.DescendantAdded:Connect(function(p)
-        if p:IsA("BasePart") then
-            table.insert(ST.MedConns, OnAnchor(p))
-        end
-    end))
+local function SetupMed(ch)
+    for _, c in pairs(ST.MedConns) do pcall(function() c:Disconnect() end) end ST.MedConns = {}
+    if not ch then return end
+    for _, p in ipairs(ch:GetDescendants()) do if p:IsA("BasePart") then table.insert(ST.MedConns, OnAnchor(p)) end end
+    table.insert(ST.MedConns, ch.DescendantAdded:Connect(function(p) if p:IsA("BasePart") then table.insert(ST.MedConns, OnAnchor(p)) end end))
 end
 
--- 🔧 إصلاح: إعادة تفعيل ميدوسا عند إعادة الميلاد
-Trk(LP.CharacterAdded:Connect(function(c)
-    task.wait(1)
-    if ST.MedCntOn then
-        SetupMedusa(c)
-    end
-end))
+Trk(LP.CharacterAdded:Connect(function(c) task.wait(1) if ST.MedCntOn then SetupMed(c) end end))
 
--- ==========================================
--- == 22. نظام الإسقاط والنزول (Drop & TP) ==
--- ==========================================
 local _G_DB = _G_DB or { X = {}, A = false }
 
 local function StopDrop()
-    _G_DB.A = false
-    ST.DropActive = false
-    for _, c in ipairs(_G_DB.X) do
-        task.spawn(function() pcall(function() if typeof(c) == "RBXScriptConnection" then c:Disconnect() end end) end)
-    end
+    _G_DB.A = false ST.DropActive = false
+    for _, c in ipairs(_G_DB.X) do task.spawn(function() pcall(function() if typeof(c) == "RBXScriptConnection" then c:Disconnect() end end) end) end
     _G_DB.X = {}
 end
 
 local function DoDrop()
     if ST.DropActive then return end
-    PS(SFX.Clk)
-    ST.DropActive = true
-    _G_DB.A = true
-
+    ST.DropActive = true _G_DB.A = true
     table.insert(_G_DB.X, RunService.Stepped:Connect(function()
         if not _G_DB.A then return end
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LP and p.Character then
-                for _, a in ipairs(p.Character:GetChildren()) do
-                    if a:IsA("BasePart") then a.CanCollide = false end
-                end
-            end
-        end
+        for _, p in ipairs(Players:GetPlayers()) do if p ~= LP and p.Character then for _, a in ipairs(p.Character:GetChildren()) do if a:IsA("BasePart") then a.CanCollide = false end end end end
     end))
-
     task.spawn(function()
         while _G_DB.A do
             RunService.Heartbeat:Wait()
             _G_DB.H = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
             if _G_DB.H then
-                _G_DB.V = _G_DB.H.Velocity
-                -- 🔧 إصلاح: تقليل قوة الفيلوسيتي لتقليل الكشف
-                _G_DB.H.Velocity = _G_DB.V * 500 + Vector3.new(0, 2000, 0)
+                _G_DB.V = _G_DB.H.Velocity local dV = _G_DB.V * 500 + Vector3.new(0, 2000, 0)
+                if dV.Magnitude > 10000 then dV = dV.Unit * 10000 end
+                _G_DB.H.Velocity = dV
                 RunService.RenderStepped:Wait()
                 if _G_DB.H.Parent then _G_DB.H.Velocity = _G_DB.V end
                 RunService.Stepped:Wait()
@@ -1318,96 +779,56 @@ local function DoDrop()
             end
         end
     end)
-
     task.delay(0.4, function()
-        StopDrop()
-        task.wait(0.15)
-        local h = gH()
-        if h and h.Parent then
-            h.Velocity = Vector3.zero
-            h.AssemblyLinearVelocity = Vector3.zero
-            h.AssemblyAngularVelocity = Vector3.zero
-        end
+        StopDrop() task.wait(0.15)
+        local h = gH() if h and h.Parent then h.Velocity = Vector3.new(0, h.Velocity.Y, 0) end
     end)
 end
 
 local function DoTPDown()
-    PS(SFX.Clk)
     pcall(function()
-        local c = LP.Character
-        local h = gH()
+        local c = LP.Character local h = gH()
         if h and c and c.Parent then
-            local origin = h.CFrame.Position
-            local params = RaycastParams.new()
-            params.FilterDescendantsInstances = { c }
-            params.FilterType = Enum.RaycastFilterType.Exclude
+            local origin = h.CFrame.Position local params = RaycastParams.new()
+            params.FilterDescendantsInstances = { c } params.FilterType = Enum.RaycastFilterType.Exclude
             local result = workspace:Raycast(origin, Vector3.new(0, -1000, 0), params)
-            local targetY = -50
-            if result then targetY = result.Position.Y + 3 end
-            local rot = h.CFrame.Rotation
-            local l1 = h.Velocity
-            c:PivotTo(CFrame.new(h.Position.X, targetY, h.Position.Z) * rot)
-            h.Velocity = l1
+            local targetY = -50 if result then targetY = result.Position.Y + 3 end
+            local rot = h.CFrame.Rotation local l1 = h.Velocity
+            c:PivotTo(CFrame.new(h.Position.X, targetY, h.Position.Z) * rot) h.Velocity = l1
         end
     end)
 end
 
-local function ToggleAutoTPD(state)
-    ST.AutoTPDOn = state
+local function ToggleATPD(st)
+    ST.AutoTPDOn = st
     if ST.AutoTPDOn then
-        PS(SFX.Tgl)
         task.spawn(function()
             while ST.AutoTPDOn and _G.ExtRunning and CoreActive do
                 task.wait(0.05)
-                if ST.LKA then
-                    ST.WasLockOn = true
-                    continue
-                end
+                if ST.LKA then ST.WasLockOn = true continue end
                 if ST.WasLockOn then
-                    ST.WasLockOn = false
-                    local h = gH()
-                    if h and h.Position.Y > SafeGetNumber(BX.TPD, 6, LIMITS.MAX_TPD_H) then
-                        DoTPDown()
-                    end
+                    ST.WasLockOn = false local h = gH()
+                    if h and h.Position.Y > SafeGetNumber(BX.TPD, 6, LIMITS.MAX_TPD_H) then DoTPDown() end
                     continue
                 end
-                local h = gH()
-                if h and h.Position.Y > SafeGetNumber(BX.TPD, 6, LIMITS.MAX_TPD_H) then
-                    DoTPDown()
-                end
+                local h = gH() if h and h.Position.Y > SafeGetNumber(BX.TPD, 6, LIMITS.MAX_TPD_H) then DoTPDown() end
             end
         end)
-    else
-        PS(SFX.Tgl)
-        ST.AutoTPDOn = false
-        ST.WasLockOn = false
-    end
+    else ST.AutoTPDOn = false ST.WasLockOn = false end
 end
 
--- ==========================================
--- == 23. أنظمة التحسين (Anti Lag & FPS)  ==
--- ==========================================
-local function ToggleAntiLag()
+local function ToggleALag()
     ST.AntiLagOn = true
-    PS(SFX.Tgl)
     pcall(function() setfpscap(999) end)
     pcall(function()
-        local L = game:GetService("Lighting")
-        L.GlobalShadows = false
-        L.FogEnd = 9e9
-        L.Brightness = 0
-        for _, e in ipairs(L:GetChildren()) do
-            if e:IsA("PostEffect") or e:IsA("Atmosphere") then
-                pcall(function() e:Destroy() end)
-            end
-        end
+        local L = game:GetService("Lighting") L.GlobalShadows = false L.FogEnd = 9e9 L.Brightness = 0
+        for _, e in ipairs(L:GetChildren()) do if e:IsA("PostEffect") or e:IsA("Atmosphere") then pcall(function() e:Destroy() end) end end
     end)
     pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
 end
 
-local function ToggleFPSBoost()
+local function ToggleFPS()
     ST.FPSBoostOn = true
-    PS(SFX.Tgl)
     pcall(function() setfpscap(999999999) end)
     local function pO(v)
         pcall(function()
@@ -1417,57 +838,35 @@ local function ToggleFPSBoost()
             elseif v:IsA("Decal") or v:IsA("Texture") then v.Transparency = 1
             elseif v:IsA("SpecialMesh") then v.TextureId = ""
             elseif v:IsA("Fire") or v:IsA("SpotLight") or v:IsA("Smoke") or v:IsA("Sparkles") or v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") then v.Enabled = false
-            elseif v:IsA("SurfaceAppearance") then v:Destroy()
-            end
+            elseif v:IsA("SurfaceAppearance") then v:Destroy() end
         end)
     end
     for _, v in pairs(workspace:GetDescendants()) do pO(v) end
 end
 
--- ==========================================
--- == 24. نظام السرقة التلقائية (Auto Steal) ==
--- ==========================================
 local function IsMyPlot(pn)
-    local pl = workspace:FindFirstChild("Plots")
-    if not pl then return false end
-    local p = pl:FindFirstChild(pn)
-    if not p then return false end
+    local pl = workspace:FindFirstChild("Plots") if not pl then return false end
+    local p = pl:FindFirstChild(pn) if not p then return false end
     local s = p:FindFirstChild("PlotSign")
-    if s then
-        local y = s:FindFirstChild("YourBase")
-        if y and y:IsA("BillboardGui") then return y.Enabled == true end
-    end
+    if s then local y = s:FindFirstChild("YourBase") if y and y:IsA("BillboardGui") then return y.Enabled == true end end
     return false
 end
 
 local function FindNearestPrompt()
-    local h = gH()
-    if not h then return nil end
-    local pl = workspace:FindFirstChild("Plots")
-    if not pl then return nil end
+    local h = gH() if not h then return nil end
+    local pl = workspace:FindFirstChild("Plots") if not pl then return nil end
     local np, npd = nil, math.huge
     for _, pl2 in ipairs(pl:GetChildren()) do
         if IsMyPlot(pl2.Name) then continue end
-        local pod = pl2:FindFirstChild("AnimalPodiums")
-        if not pod then continue end
+        local pod = pl2:FindFirstChild("AnimalPodiums") if not pod then continue end
         for _, p in ipairs(pod:GetChildren()) do
             pcall(function()
-                local b = p:FindFirstChild("Base")
-                local sp = b and b:FindFirstChild("Spawn")
-                if not sp then return end
-                local a = p:FindFirstChild("Animal") or p:FindFirstChildWhichIsA("Model")
-                if not a then return end
+                local b = p:FindFirstChild("Base") local sp = b and b:FindFirstChild("Spawn") if not sp then return end
+                local a = p:FindFirstChild("Animal") or p:FindFirstChildWhichIsA("Model") if not a then return end
                 local d = (sp.Position - h.Position).Magnitude
                 if d < npd and d <= STEAL_RANGE then
-                    local at = sp:FindFirstChild("PromptAttachment")
-                    if at then
-                        for _, c in ipairs(at:GetChildren()) do
-                            if c:IsA("ProximityPrompt") and c.Enabled then
-                                np = c
-                                npd = d
-                                break
-                            end
-                        end
+                    local at = sp:FindFirstChild("PromptAttachment") if at then
+                        for _, c in ipairs(at:GetChildren()) do if c:IsA("ProximityPrompt") and c.Enabled then np = c npd = d break end end
                     end
                 end
             end)
@@ -1482,71 +881,43 @@ local function ExecSteal(pr)
         ST.StealData[pr] = { h = {}, t = {}, r = true }
         pcall(function()
             if getconnections then
-                for _, c in ipairs(getconnections(pr.PromptButtonHoldBegan)) do
-                    if c.Function then table.insert(ST.StealData[pr].h, c.Function) end
-                end
-                for _, c in ipairs(getconnections(pr.Triggered)) do
-                    if c.Function then table.insert(ST.StealData[pr].t, c.Function) end
-                end
+                for _, c in ipairs(getconnections(pr.PromptButtonHoldBegan)) do if c.Function then table.insert(ST.StealData[pr].h, c.Function) end end
+                for _, c in ipairs(getconnections(pr.Triggered)) do if c.Function then table.insert(ST.StealData[pr].t, c.Function) end end
             end
         end)
     end
-    local d = ST.StealData[pr]
-    if not d.r then return end
-    d.r = false
-    ST.isStealing = true
-    ST.stealStart = tick()
+    local d = ST.StealData[pr] if not d.r then return end
+    d.r = false ST.isStealing = true ST.stealStart = tick()
     task.spawn(function()
         for _, f in ipairs(d.h) do task.spawn(f) end
         task.wait(STEAL_DELAY)
         for _, f in ipairs(d.t) do task.spawn(f) end
-        d.r = true
-        ST.isStealing = false
+        d.r = true ST.isStealing = false
     end)
 end
 
 task.spawn(function()
     while _G.ExtRunning and CoreActive do
-        if ST.AutoStealOn and not ST.isStealing then
-            local p = FindNearestPrompt()
-            if p then ExecSteal(p) end
-        end
-        task.wait(0.1)
+        if ST.AutoStealOn and not ST.isStealing then local p = FindNearestPrompt() if p then ExecSteal(p) end end
+        task.wait(0.05)
     end
 end)
 
--- ==========================================
--- == 25. أنظمة خلفية مستمرة (Background) ==
--- ==========================================
--- إيقاف التصادم مع اللاعبين الآخرين
 task.spawn(function()
     while _G.ExtRunning and CoreActive do
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LP and p.Character then
-                for _, a in ipairs(p.Character:GetChildren()) do
-                    if a:IsA("BasePart") then a.CanCollide = false end
-                end
-            end
-        end
+        for _, p in ipairs(Players:GetPlayers()) do if p ~= LP and p.Character then for _, a in ipairs(p.Character:GetChildren()) do if a:IsA("BasePart") then a.CanCollide = false end end end end
         task.wait(1)
     end
 end)
 
--- نظام ESP
 task.spawn(function()
     while _G.ExtRunning and CoreActive do
         pcall(function()
             for _, c in ipairs(ESPFolder:GetChildren()) do c:Destroy() end
             for _, p in ipairs(Players:GetPlayers()) do
                 if p ~= LP and p.Character then
-                    local hl = Instance.new("Highlight")
-                    hl.Name = p.Name
-                    hl.Adornee = p.Character
-                    hl.FillTransparency = 0.8
-                    hl.OutlineColor = Color3.fromRGB(255, 0, 0)
-                    hl.OutlineTransparency = 0
-                    hl.FillColor = Color3.fromRGB(255, 0, 0)
-                    hl.Parent = ESPFolder
+                    local hl = Instance.new("Highlight") hl.Name = p.Name hl.Adornee = p.Character hl.FillTransparency = 0.8
+                    hl.OutlineColor = C.GRN hl.OutlineTransparency = 0 hl.FillColor = Color3.fromRGB(0, 80, 40) hl.Parent = ESPFolder
                 end
             end
         end)
@@ -1554,19 +925,13 @@ task.spawn(function()
     end
 end)
 
--- تفعيل المضرب عند الاقتراب
 task.spawn(function()
     while _G.ExtRunning and CoreActive do
         pcall(function()
-            local h = gH()
-            if h then
-                local nearest = FindNearest()
-                if nearest and nearest.Character then
-                    local eH = nearest.Character:FindFirstChild("HumanoidRootPart")
-                    if eH and (h.Position - eH.Position).Magnitude <= 12 then
-                        local bat = FindBat()
-                        if bat then bat:Activate() end
-                    end
+            local h = gH() if h then
+                local n = FindNearest() if n and n.Character then
+                    local eH = n.Character:FindFirstChild("HumanoidRootPart")
+                    if eH and (h.Position - eH.Position).Magnitude <= 12 then local b = FindBat() if b then b:Activate() end end
                 end
             end
         end)
@@ -1574,152 +939,211 @@ task.spawn(function()
     end
 end)
 
--- نظام إيقاف الأنيميشن (Unwalk) - يوقف كل الأنيميشن
 _G.ExtUnwalkC = Trk(RunService.RenderStepped:Connect(function()
     if not _G.ExtRunning or not CoreActive then return end
-    local c = LP.Character
-    if c then
-        local Humanoid = c:FindFirstChildOfClass("Humanoid")
-        if Humanoid then
-            local Animator = Humanoid:FindFirstChildOfClass("Animator")
-            if Animator then
-                for _, Track in ipairs(Animator:GetPlayingAnimationTracks()) do
-                    pcall(function() Track:Stop(0) end)
-                end
+    local c = LP.Character if c then
+        local H = c:FindFirstChildOfClass("Humanoid") if H then
+            local A = H:FindFirstChildOfClass("Animator") if A then
+                for _, T in ipairs(A:GetPlayingAnimationTracks()) do pcall(function() T:Stop(0) end) end
             end
         end
     end
 end))
 
--- ==========================================
--- == 26. بناء واجهات المستخدم (UI Building) ==
--- ==========================================
-local MainGui = Instance.new("ScreenGui")
-MainGui.Name = "ExtHub"
-MainGui.ResetOnSpawn = false
-MainGui.Parent = MainFolder
+MainGui = Instance.new("ScreenGui")
+MainGui.Name = "ExtHub" MainGui.ResetOnSpawn = false MainGui.Parent = MainFolder
 
-local LaggerGui = Instance.new("ScreenGui")
-LaggerGui.Name = "EternalLagger"
-LaggerGui.ResetOnSpawn = false
-LaggerGui.Parent = MainFolder
+LaggerGui = Instance.new("ScreenGui")
+LaggerGui.Name = "EternalLagger" LaggerGui.ResetOnSpawn = false LaggerGui.Parent = MainFolder
 
-local function MakePanelDrag(frame, handle)
-    local dragging, dragInput, dragStart, startPos = false, nil, nil, nil
-    handle.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = frame.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then dragging = false end
-            end)
+local function MakePanelDrag(f, h)
+    local dr, di, ds, dp = false, nil, nil, nil
+    h.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dr = true ds = i.Position dp = f.Position
+            i.Changed:Connect(function() if i.UserInputState == Enum.UserInputState.End then dr = false end end)
         end
     end)
-    handle.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-            dragInput = input
-        end
-    end)
-    UIS.InputChanged:Connect(function(input)
-        if input == dragInput and dragging then
-            local delta = input.Position - dragStart
-            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
+    h.InputChanged:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch then di = i end end)
+    UIS.InputChanged:Connect(function(i) if i == di and dr then local d = i.Position - ds f.Position = UDim2.new(dp.X.Scale, dp.X.Offset + d.X, dp.Y.Scale, dp.Y.Offset + d.Y) end end)
 end
 
-local function MakeFloatBtn(parent, text, x, y, w, h)
+local function MakeFloatBtn(parent, text, xPos, yPos, elemKey)
+    local sz = 72
+
     local f = Instance.new("Frame")
     f.Name = text
     f.BackgroundColor3 = C.BG
-    f.BackgroundTransparency = 0.5
-    f.Size = UDim2.new(0, (w or 110) * SC, 0, (h or 42) * SC)
-    f.Position = UDim2.new(1, -(x) * SC, 0, y * SC)
+    f.BackgroundTransparency = 0.4
+    f.Size = UDim2.new(0, sz * SC, 0, sz * SC)
+    f.Position = UDim2.new(1, -(xPos + sz) * SC, 0.5, yPos * SC)
     f.Parent = parent
-    Instance.new("UICorner", f).CornerRadius = UDim.new(0, 8)
+
+    Instance.new("UICorner", f).CornerRadius = UDim.new(0, 10)
+
+    AddGlow(f, C.GRN, 6)
+
     local st = Instance.new("UIStroke")
     st.Thickness = 2
     st.Color = C.GRN
     st.Parent = f
+
     BorderGrad(st)
+    AddParticles(f, 5)
+
+    if elemKey then
+        UIElements[elemKey] = f
+    end
+
     local btn = Instance.new("TextButton")
     btn.Name = "Btn"
     btn.Text = text
     btn.TextColor3 = C.TXT
     btn.Font = Enum.Font.GothamBlack
-    btn.TextSize = 13 * SC
+    btn.TextSize = 11 * SC
     btn.BackgroundTransparency = 1
     btn.Size = UDim2.new(1, 0, 1, 0)
     btn.ZIndex = 5
+    btn.TextWrapped = true
     btn.Parent = f
+
     TextGrad(btn)
-    Hover(btn, C.HVR, C.BG)
-    ClkFX(btn)
-    local dragging, dragInput, dragStart, startPos = false, nil, nil, nil
-    btn.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = f.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+
+    local dr, di, ds, dp, wd = false, nil, nil, nil, false
+
+    btn.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1
+            or i.UserInputType == Enum.UserInputType.Touch then
+
+            dr = true
+            ds = i.Position
+            dp = f.Position
+            wd = false
+
+            i.Changed:Connect(function()
+                if i.UserInputState == Enum.UserInputState.End then
+                    dr = false
+                end
             end)
         end
     end)
-    btn.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-            dragInput = input
+
+    btn.InputChanged:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseMovement
+            or i.UserInputType == Enum.UserInputType.Touch then
+
+            di = i
+
+            if dr and ds then
+                if (i.Position - ds).Magnitude > 5 then
+                    wd = true
+                end
+            end
         end
     end)
-    UIS.InputChanged:Connect(function(input)
-        if input == dragInput and dragging then
-            local delta = input.Position - dragStart
-            f.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+
+    UIS.InputChanged:Connect(function(i)
+        if i == di and dr then
+            local d = i.Position - ds
+
+            f.Position = UDim2.new(
+                dp.X.Scale,
+                dp.X.Offset + d.X,
+                dp.Y.Scale,
+                dp.Y.Offset + d.Y
+            )
         end
     end)
+
+    Hover(btn, C.HVR, C.BG)
+
+    local os_ = btn.Size
+
+    btn.MouseButton1Click:Connect(function()
+        if wd then
+            wd = false
+            return
+        end
+
+        TweenService:Create(
+            btn,
+            TweenInfo.new(0.06),
+            {
+                Size = UDim2.new(
+                    os_.X.Scale,
+                    os_.X.Offset * 0.93,
+                    os_.Y.Scale,
+                    os_.Y.Offset * 0.93
+                )
+            }
+        ):Play()
+
+        task.delay(0.06, function()
+            if btn and btn.Parent then
+                TweenService:Create(
+                    btn,
+                    TweenInfo.new(0.15, Enum.EasingStyle.Back),
+                    { Size = os_ }
+                ):Play()
+            end
+        end)
+    end)
+
     task.spawn(function()
         while btn and btn.Parent and CoreActive do
             local isOn = btn:GetAttribute("On")
+
             if isOn then
-                TweenService:Create(st, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { Thickness = 3.5, Color = C.GRN }):Play()
-                task.wait(0.8)
-                TweenService:Create(st, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { Thickness = 1.5, Color = C.GRN }):Play()
-                task.wait(0.8)
+                TweenService:Create(
+                    st,
+                    TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+                    {
+                        Thickness = 3.5,
+                        Color = C.GRN_BRIGHT
+                    }
+                ):Play()
+
+                task.wait(0.6)
+
+                TweenService:Create(
+                    st,
+                    TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+                    {
+                        Thickness = 2,
+                        Color = C.GRN
+                    }
+                ):Play()
+
+                task.wait(0.6)
             else
-                TweenService:Create(st, TweenInfo.new(0.3), { Thickness = 2, Color = C.RED }):Play()
+                TweenService:Create(
+                    st,
+                    TweenInfo.new(0.3),
+                    {
+                        Thickness = 1.5,
+                        Color = C.RED
+                    }
+                ):Play()
+
                 task.wait(0.4)
             end
         end
     end)
+
     return btn, f, st
 end
 
-local function MakeSysBtn(parent, text, x, y, w, h)
+local function MakeSysBtn(p, t, x, y, w, h)
     local f = Instance.new("Frame")
-    f.Name = text
-    f.BackgroundColor3 = C.BG
-    f.BackgroundTransparency = 0.5
-    f.Size = UDim2.new(0, (w or 110) * SC, 0, (h or 42) * SC)
-    f.Position = UDim2.new(0, x * SC, 0, y * SC)
-    f.Parent = parent
-    f.ZIndex = 5
+    f.Name = t f.BackgroundColor3 = C.BG f.BackgroundTransparency = 0.4
+    f.Size = UDim2.new(0, (w or 110) * SC, 0, (h or 36) * SC) f.Position = UDim2.new(0, x * SC, 0, y * SC) f.Parent = p f.ZIndex = 5
     Instance.new("UICorner", f).CornerRadius = UDim.new(0, 8)
-    local st = Instance.new("UIStroke")
-    st.Thickness = 2
-    st.Color = C.GRN
-    st.Parent = f
-    BorderGrad(st)
+    AddGlow(f, C.GRN, 4)
+    local st = Instance.new("UIStroke") st.Thickness = 2 st.Color = C.GRN st.Parent = f BorderGrad(st)
+    AddParticles(f, 3)
     local btn = Instance.new("TextButton")
-    btn.Name = "Btn"
-    btn.Text = text
-    btn.TextColor3 = C.TXT
-    btn.Font = Enum.Font.GothamBlack
-    btn.TextSize = 12 * SC
-    btn.BackgroundTransparency = 1
-    btn.Size = UDim2.new(1, 0, 1, 0)
-    btn.ZIndex = 6
-    btn.Parent = f
+    btn.Name = "Btn" btn.Text = t btn.TextColor3 = C.TXT btn.Font = Enum.Font.GothamBlack btn.TextSize = 10 * SC
+    btn.BackgroundTransparency = 1 btn.Size = UDim2.new(1, 0, 1, 0) btn.ZIndex = 6 btn.Parent = f
     TextGrad(btn)
     Hover(btn, C.HVR, C.BG)
     ClkFX(btn)
@@ -1727,12 +1151,12 @@ local function MakeSysBtn(parent, text, x, y, w, h)
         while btn and btn.Parent and CoreActive do
             local isOn = btn:GetAttribute("On")
             if isOn then
-                TweenService:Create(st, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { Thickness = 3.5, Color = C.GRN }):Play()
-                task.wait(0.8)
-                TweenService:Create(st, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { Thickness = 1.5, Color = C.GRN }):Play()
-                task.wait(0.8)
+                TweenService:Create(st, TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { Thickness = 3.5, Color = C.GRN_BRIGHT }):Play()
+                task.wait(0.6)
+                TweenService:Create(st, TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { Thickness = 2, Color = C.GRN }):Play()
+                task.wait(0.6)
             else
-                TweenService:Create(st, TweenInfo.new(0.3), { Thickness = 2, Color = C.RED }):Play()
+                TweenService:Create(st, TweenInfo.new(0.3), { Thickness = 1.5, Color = C.RED }):Play()
                 task.wait(0.4)
             end
         end
@@ -1740,552 +1164,437 @@ local function MakeSysBtn(parent, text, x, y, w, h)
     return btn, f, st
 end
 
-local function MakePanel(parent, title, x, y, w, h, hasMin)
+local function MakePanel(p, t, x, y, w, h, m, k)
     local f = Instance.new("Frame")
-    f.Name = title
-    f.BackgroundColor3 = C.BG
-    f.BackgroundTransparency = 0.4
-    f.Size = UDim2.new(0, (w or 220) * SC, 0, (h or 220) * SC)
-    f.Position = UDim2.new(0, x * SC, 0, y * SC)
-    f.Parent = parent
-    f.ClipsDescendants = true
+    f.Name = t f.BackgroundColor3 = C.BG f.BackgroundTransparency = 0.3
+    f.Size = UDim2.new(0, (w or 220) * SC, 0, (h or 220) * SC) f.Position = UDim2.new(0, x * SC, 0, y * SC) f.Parent = p f.ClipsDescendants = true
     Instance.new("UICorner", f).CornerRadius = UDim.new(0, 10)
-    local st = Instance.new("UIStroke")
-    st.Thickness = 2
-    st.Color = C.GRN
-    st.Parent = f
-    BorderGrad(st)
-    local dragHandle = Instance.new("Frame")
-    dragHandle.Name = "DragHandle"
-    dragHandle.BackgroundTransparency = 1
-    dragHandle.Size = UDim2.new(1, 0, 0, 26 * SC)
-    dragHandle.Position = UDim2.new(0, 0, 0, 0)
-    dragHandle.ZIndex = 20
-    dragHandle.Parent = f
-    MakePanelDrag(f, dragHandle)
-    local minBtn = nil
-    if hasMin then
-        minBtn = Instance.new("TextButton")
-        minBtn.Text = "-"
-        minBtn.TextColor3 = C.GRN
-        minBtn.Font = Enum.Font.GothamBlack
-        minBtn.TextSize = 18 * SC
-        minBtn.BackgroundTransparency = 1
-        minBtn.Size = UDim2.new(0, 24 * SC, 0, 24 * SC)
-        minBtn.Position = UDim2.new(1, -28 * SC, 0, 1 * SC)
-        minBtn.ZIndex = 25
-        minBtn.Parent = f
-        Hover(minBtn)
+    AddGlow(f, C.GRN, 8)
+    local st = Instance.new("UIStroke") st.Thickness = 2 st.Color = C.GRN st.Parent = f BorderGrad(st)
+    AddParticles(f, 6)
+    if k then UIElements[k] = f end
+    local tl = Instance.new("TextLabel")
+    tl.Name = "PanelTitle" tl.Text = t tl.TextColor3 = C.GRN tl.Font = Enum.Font.GothamBlack tl.TextSize = 11 * SC
+    tl.BackgroundTransparency = 1 tl.Size = UDim2.new(0.7, 0, 0, 18 * SC) tl.Position = UDim2.new(0, 8 * SC, 0, 4 * SC)
+    tl.TextXAlignment = Enum.TextXAlignment.Left tl.ZIndex = 10 tl.Parent = f TextGrad(tl)
+    local dh = Instance.new("Frame")
+    dh.Name = "DragHandle" dh.BackgroundTransparency = 1 dh.Size = UDim2.new(1, 0, 0, 22 * SC) dh.Position = UDim2.new(0, 0, 0, 0) dh.ZIndex = 20 dh.Parent = f
+    MakePanelDrag(f, dh)
+    local mb = nil
+    if m then
+        mb = Instance.new("TextButton") mb.Text = "-" mb.TextColor3 = C.GRN mb.Font = Enum.Font.GothamBlack mb.TextSize = 18 * SC
+        mb.BackgroundTransparency = 1 mb.Size = UDim2.new(0, 24 * SC, 0, 24 * SC) mb.Position = UDim2.new(1, -28 * SC, 0, 1 * SC) mb.ZIndex = 25 mb.Parent = f
+        Hover(mb)
     end
-    return f, minBtn
+    return f, mb
 end
 
--- ==========================================
--- == 27. تصميم وترتيب الواجهات (Layout)  ==
--- ==========================================
-local FB_GAP = 52
-local bDropF = MakeFloatBtn(MainGui, L("drop"), 140, 20, 125, 42)
-local bTPDF = MakeFloatBtn(MainGui, L("tpdown"), 140, 20 + FB_GAP, 125, 42)
-local bLockF = MakeFloatBtn(MainGui, L("lock"), 140, 20 + (FB_GAP * 2), 125, 42)
-local bIRSF = MakeFloatBtn(MainGui, L("instarst"), 140, 20 + (FB_GAP * 3), 125, 42)
-local bModeF = MakeFloatBtn(MainGui, L("mode_toggle"), 140, 20 + (FB_GAP * 4), 125, 42)
-local bLangF = MakeFloatBtn(MainGui, L("langbtn"), 140, 20 + (FB_GAP * 5), 125, 42)
+local BS = 72 local BG = 6 local MR = 15 local rH = BS + BG
 
--- لوحة إعدادات السرعة
-local P2, P2Min = MakePanel(MainGui, L("spd_chg"), 20, 20, 250, 245, true)
+local bLockF, fLockF = MakeFloatBtn(MainGui, L("lock"), MR, -rH * 0.5, "FloatLock")
+local bTPDF, fTPDF = MakeFloatBtn(MainGui, L("tpdown"), MR + BS + BG, -rH * 0.5, "FloatTPDown")
+local bDropF, fDropF = MakeFloatBtn(MainGui, L("drop"), MR, rH * 0.5, "FloatDrop")
+local bIRSF, fIRSF = MakeFloatBtn(MainGui, L("instarst"), MR + BS + BG, rH * 0.5, "FloatInstaReset")
+local bModeF, fModeF = MakeFloatBtn(MainGui, L("mode_toggle"), MR, rH * 1.5, "FloatMode")
+
+local P2, P2Min = MakePanel(MainGui, L("spd_chg"), 20, 260, 310, 440, true, "SpeedPanel")
+
 local ModeLabel = Instance.new("TextLabel")
-ModeLabel.Text = L("mode") .. ": " .. L("normal")
-ModeLabel.TextColor3 = C.GRN
-ModeLabel.Font = Enum.Font.GothamBlack
-ModeLabel.TextSize = 13 * SC
-ModeLabel.BackgroundTransparency = 1
-ModeLabel.Size = UDim2.new(1, 0, 0, 22 * SC)
-ModeLabel.Position = UDim2.new(0, 8 * SC, 0, 8 * SC)
-ModeLabel.TextXAlignment = Enum.TextXAlignment.Left
-ModeLabel.ZIndex = 10
-ModeLabel.Parent = P2
+ModeLabel.Text = L("mode") .. ": " .. L(ST.SpdMode:lower())
+ModeLabel.TextColor3 = C.GRN ModeLabel.Font = Enum.Font.GothamBlack ModeLabel.TextSize = 14 * SC
+ModeLabel.BackgroundTransparency = 1 ModeLabel.Size = UDim2.new(1, 0, 0, 24 * SC)
+ModeLabel.Position = UDim2.new(0, 8 * SC, 0, 22 * SC) ModeLabel.TextXAlignment = Enum.TextXAlignment.Left ModeLabel.ZIndex = 10 ModeLabel.Parent = P2
 TextGrad(ModeLabel)
 
-local function MakeSpdInput(lbl, default, y, maxLimit)
+local function MakeSpdInput(lbl, def, y, max, sk)
     local l = Instance.new("TextLabel")
-    l.Name = "Lbl_" .. lbl
-    l.Text = lbl
-    l.TextColor3 = C.TXT
-    l.Font = Enum.Font.GothamBold
-    l.TextSize = 11 * SC
-    l.BackgroundTransparency = 1
-    l.Size = UDim2.new(0.6, 0, 0, 20 * SC)
-    l.Position = UDim2.new(0, 8 * SC, 0, y * SC)
-    l.TextXAlignment = Enum.TextXAlignment.Left
-    l.ZIndex = 10
-    l.Parent = P2
+    l.Name = "Lbl_" .. lbl l.Text = lbl l.TextColor3 = C.TXT l.Font = Enum.Font.GothamBold l.TextSize = 11 * SC
+    l.BackgroundTransparency = 1 l.Size = UDim2.new(0.55, 0, 0, 22 * SC) l.Position = UDim2.new(0, 8 * SC, 0, y * SC)
+    l.TextXAlignment = Enum.TextXAlignment.Left l.ZIndex = 10 l.Parent = P2
+    local sv = nil
+    if _LoadedSave.Speeds and _LoadedSave.Speeds[sk] then sv = _LoadedSave.Speeds[sk] end
     local bx = Instance.new("TextBox")
-    bx.Text = tostring(default)
-    bx.TextColor3 = C.TXT
-    bx.Font = Enum.Font.GothamBold
-    bx.TextSize = 12 * SC
-    bx.BackgroundColor3 = C.DRK
-    bx.Size = UDim2.new(0, 70 * SC, 0, 20 * SC)
-    bx.Position = UDim2.new(1, -82 * SC, 0, y * SC)
-    bx.ZIndex = 10
-    bx.Parent = P2
-    bx.ClearTextOnFocus = false
+    bx.Text = tostring(sv or def) bx.TextColor3 = C.TXT bx.Font = Enum.Font.GothamBold bx.TextSize = 13 * SC
+    bx.BackgroundColor3 = C.DRK bx.Size = UDim2.new(0, 85 * SC, 0, 22 * SC) bx.Position = UDim2.new(1, -95 * SC, 0, y * SC)
+    bx.ZIndex = 10 bx.Parent = P2 bx.ClearTextOnFocus = false
     Instance.new("UICorner", bx).CornerRadius = UDim.new(0, 5)
-    local bs = Instance.new("UIStroke")
-    bs.Thickness = 1
-    bs.Color = C.GRN
-    bs.Parent = bx
-    BorderGrad(bs)
+    local bs = Instance.new("UIStroke") bs.Thickness = 1 bs.Color = C.GRN bs.Parent = bx BorderGrad(bs)
     bx.FocusLost:Connect(function()
-        local num = tonumber(bx.Text)
-        if not num then
-            bx.Text = tostring(default)
+        local n = tonumber(bx.Text)
+        if not n then bx.Text = tostring(sv or def)
         else
-            if num > maxLimit then
-                bx.Text = tostring(maxLimit)
-                Notify("EXTERNAL", L("warn_max"), 2)
-            else
-                bx.Text = tostring(math.clamp(num, 0, maxLimit))
-            end
+            if n > max then bx.Text = tostring(max) Notify("EXTERNAL HUB", L("warn_max"), 2, C.RED)
+            else bx.Text = tostring(math.clamp(n, 0, max)) end
         end
     end)
     return bx, l
 end
 
-BX.N, BXLabels.N = MakeSpdInput(L("n_spd"), 58, 35, LIMITS.MAX_NORMAL_SPD)
-BX.S, BXLabels.S = MakeSpdInput(L("s_spd"), 28, 60, LIMITS.MAX_STEAL_SPD)
-BX.J, BXLabels.J = MakeSpdInput(L("j_pwr"), LIMITS.NORMAL_JUMP, 85, LIMITS.MAX_JUMP_PWR)
-BX.TPD, BXLabels.TPD = MakeSpdInput(L("tpd_h"), 6, 110, LIMITS.MAX_TPD_H)
-BX.LN, BXLabels.LN = MakeSpdInput(L("l_n_spd"), LIMITS.LAG_NORMAL_SPD, 135, LIMITS.MAX_NORMAL_SPD)
-BX.LS, BXLabels.LS = MakeSpdInput(L("l_s_spd"), LIMITS.LAG_STEAL_SPD, 160, LIMITS.MAX_STEAL_SPD)
+BX.N, BXLabels.N = MakeSpdInput(L("n_spd"), 58, 50, LIMITS.MAX_NORMAL_SPD, "NormalSpeed")
+BX.S, BXLabels.S = MakeSpdInput(L("s_spd"), 28, 78, LIMITS.MAX_STEAL_SPD, "StealSpeed")
+BX.J, BXLabels.J = MakeSpdInput(L("j_pwr"), LIMITS.NORMAL_JUMP, 106, LIMITS.MAX_JUMP_PWR, "JumpPower")
+BX.TPD, BXLabels.TPD = MakeSpdInput(L("tpd_h"), 6, 134, LIMITS.MAX_TPD_H, "TPDownHeight")
+BX.LN, BXLabels.LN = MakeSpdInput(L("l_n_spd"), LIMITS.LAG_NORMAL_SPD, 162, LIMITS.MAX_NORMAL_SPD, "LaggerNormalSpeed")
+BX.LS, BXLabels.LS = MakeSpdInput(L("l_s_spd"), LIMITS.LAG_STEAL_SPD, 190, LIMITS.MAX_STEAL_SPD, "LaggerStealSpeed")
 
-local P2Minimized = false
-P2Min.MouseButton1Click:Connect(function()
-    PS(SFX.Clk)
-    P2Minimized = not P2Minimized
-    P2Min.Text = P2Minimized and "+" or "-"
-    TweenService:Create(P2, TweenInfo.new(0.4, Enum.EasingStyle.Back), {
-        Size = P2Minimized and UDim2.new(0, 250 * SC, 0, 26 * SC) or UDim2.new(0, 250 * SC, 0, 245 * SC),
-    }):Play()
-end)
+local Sep1 = Instance.new("Frame")
+Sep1.Size = UDim2.new(0.9, 0, 0, 1) Sep1.Position = UDim2.new(0.05, 0, 0, 220 * SC)
+Sep1.BackgroundColor3 = C.GRN Sep1.BackgroundTransparency = 0.5 Sep1.BorderSizePixel = 0 Sep1.ZIndex = 10 Sep1.Parent = P2
 
--- لوحة الأنظمة
-local P3, P3Min = MakePanel(MainGui, L("controls"), 20, 280, 260, 245, true)
-local bSpd = MakeSysBtn(P3, L("speed"), 15, 32, 110, 42)
-local bIJ = MakeSysBtn(P3, L("infjump"), 135, 32, 110, 42)
-local bBat = MakeSysBtn(P3, L("batcnt"), 15, 82, 110, 42)
-local bMed = MakeSysBtn(P3, L("medcnt"), 135, 82, 110, 42)
-local bRag = MakeSysBtn(P3, L("antirag"), 15, 132, 110, 42)
-local bATPD = MakeSysBtn(P3, L("autotpd"), 135, 132, 110, 42)
-local bLag = MakeSysBtn(P3, L("antilag"), 15, 182, 110, 42)
-local bFP = MakeSysBtn(P3, L("fpsboost"), 135, 182, 110, 42)
+local LangLbl = Instance.new("TextLabel")
+LangLbl.Text = L("lang_setting") LangLbl.TextColor3 = C.TXT LangLbl.Font = Enum.Font.GothamBold LangLbl.TextSize = 11 * SC
+LangLbl.BackgroundTransparency = 1 LangLbl.Size = UDim2.new(0.55, 0, 0, 24 * SC) LangLbl.Position = UDim2.new(0, 8 * SC, 0, 228 * SC)
+LangLbl.TextXAlignment = Enum.TextXAlignment.Left LangLbl.ZIndex = 10 LangLbl.Parent = P2
 
-local P3Minimized = false
-P3Min.MouseButton1Click:Connect(function()
-    PS(SFX.Clk)
-    P3Minimized = not P3Minimized
-    P3Min.Text = P3Minimized and "+" or "-"
-    TweenService:Create(P3, TweenInfo.new(0.4, Enum.EasingStyle.Back), {
-        Size = P3Minimized and UDim2.new(0, 260 * SC, 0, 26 * SC) or UDim2.new(0, 260 * SC, 0, 245 * SC),
-    }):Play()
-end)
+local LangBtn = Instance.new("TextButton")
+LangBtn.Name = "LangBtn" LangBtn.Text = L("langbtn") LangBtn.TextColor3 = C.TXT LangBtn.Font = Enum.Font.GothamBlack LangBtn.TextSize = 11 * SC
+LangBtn.BackgroundColor3 = C.DRK LangBtn.Size = UDim2.new(0, 90 * SC, 0, 24 * SC) LangBtn.Position = UDim2.new(1, -98 * SC, 0, 228 * SC)
+LangBtn.ZIndex = 10 LangBtn.Parent = P2
+Instance.new("UICorner", LangBtn).CornerRadius = UDim.new(0, 6)
+local LangSt = Instance.new("UIStroke") LangSt.Thickness = 1.5 LangSt.Color = C.GRN LangSt.Parent = LangBtn BorderGrad(LangSt)
+Hover(LangBtn, C.HVR, C.DRK) ClkFX(LangBtn)
 
--- لوحة الهوت كيز
-local P4, P4Min = MakePanel(MainGui, L("hotkeys"), 1500, 350, 260, 200, true)
-local HKInfo = Instance.new("TextLabel")
-HKInfo.Name = "HKInfo"
-HKInfo.Text = L("hk_info")
-HKInfo.TextColor3 = C.DIM
-HKInfo.Font = Enum.Font.Gotham
-HKInfo.TextSize = 8 * SC
-HKInfo.BackgroundTransparency = 1
-HKInfo.Size = UDim2.new(1, -10 * SC, 0, 15 * SC)
-HKInfo.Position = UDim2.new(0, 5 * SC, 0, 28 * SC)
-HKInfo.TextXAlignment = Enum.TextXAlignment.Left
-HKInfo.TextWrapped = true
-HKInfo.ZIndex = 10
-HKInfo.Parent = P4
+local HKTitle = Instance.new("TextLabel")
+HKTitle.Text = L("hk_info") HKTitle.TextColor3 = C.DIM HKTitle.Font = Enum.Font.Gotham HKTitle.TextSize = 9 * SC
+HKTitle.BackgroundTransparency = 1 HKTitle.Size = UDim2.new(1, -16 * SC, 0, 16 * SC) HKTitle.Position = UDim2.new(0, 8 * SC, 0, 258 * SC)
+HKTitle.TextXAlignment = Enum.TextXAlignment.Left HKTitle.TextWrapped = true HKTitle.ZIndex = 10 HKTitle.Parent = P2
 
-local HotkeyConfig = {
-    { btn = bLockF, name = L("hk_lock"), default = Enum.KeyCode.Q },
-    { btn = bTPDF, name = L("hk_tpd"), default = Enum.KeyCode.T },
-    { btn = bDropF, name = L("hk_drop"), default = Enum.KeyCode.G },
-    { btn = bIRSF, name = L("hk_ir"), default = Enum.KeyCode.Y },
-    { btn = bModeF, name = L("hk_mode"), default = Enum.KeyCode.R },
-    { btn = bLangF, name = L("hk_lang"), default = Enum.KeyCode.F },
+HotkeyConfig = {
+    { btn = bLockF, name = L("hk_lock"), default = Enum.KeyCode.Q, saveName = "HotkeyLock" },
+    { btn = bTPDF, name = L("hk_tpd"), default = Enum.KeyCode.T, saveName = "HotkeyTPDown" },
+    { btn = bDropF, name = L("hk_drop"), default = Enum.KeyCode.G, saveName = "HotkeyDrop" },
+    { btn = bIRSF, name = L("hk_ir"), default = Enum.KeyCode.Y, saveName = "HotkeyInstaReset" },
+    { btn = bModeF, name = L("hk_mode"), default = Enum.KeyCode.R, saveName = "HotkeyMode" },
+    { btn = LangBtn, name = L("hk_lang"), default = Enum.KeyCode.F, saveName = "HotkeyLang" },
 }
 
 local HKFrames = {}
 for i, cfg in ipairs(HotkeyConfig) do
-    local isRight = (i % 2 == 1)
-    local rowIdx = math.ceil(i / 2)
-    local xPos = isRight and 5 or 125
-    local yPos = 48 + ((rowIdx - 1) * 28)
-
+    local isR = (i % 2 == 0) local rIdx = math.ceil(i / 2)
+    local xP = isR and 160 or 5 local yP = 280 + ((rIdx - 1) * 24)
     local row = Instance.new("Frame")
-    row.Name = "HKRow"
-    row.BackgroundColor3 = C.BG
-    row.BackgroundTransparency = 0.5
-    row.Size = UDim2.new(0, 110 * SC, 0, 24 * SC)
-    row.Position = UDim2.new(0, xPos * SC, 0, yPos * SC)
-    row.ZIndex = 10
-    row.Parent = P4
-    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
-
-    local rowSt = Instance.new("UIStroke")
-    rowSt.Thickness = 1.5
-    rowSt.Color = C.RED
-    rowSt.Parent = row
-    BorderGrad(rowSt)
-
+    row.Name = "HKRow" row.BackgroundColor3 = C.BG row.BackgroundTransparency = 0.5
+    row.Size = UDim2.new(0, 140 * SC, 0, 20 * SC) row.Position = UDim2.new(0, xP * SC, 0, yP * SC) row.ZIndex = 10 row.Parent = P2
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+    local rowSt = Instance.new("UIStroke") rowSt.Thickness = 1.5 rowSt.Color = C.GRN rowSt.Parent = row BorderGrad(rowSt)
     local lbl = Instance.new("TextLabel")
-    lbl.Name = "HKLabel"
-    lbl.Text = cfg.name
-    lbl.TextColor3 = C.TXT
-    lbl.Font = Enum.Font.GothamBold
-    lbl.TextSize = 9 * SC
-    lbl.BackgroundTransparency = 1
-    lbl.Size = UDim2.new(0.55, 0, 1, 0)
-    lbl.Position = UDim2.new(0, 5 * SC, 0, 0)
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.ZIndex = 11
-    lbl.Parent = row
-    TextGrad(lbl)
-
+    lbl.Name = "HKLabel" lbl.Text = cfg.name lbl.TextColor3 = C.TXT lbl.Font = Enum.Font.GothamBold lbl.TextSize = 9 * SC
+    lbl.BackgroundTransparency = 1 lbl.Size = UDim2.new(0.6, 0, 1, 0) lbl.Position = UDim2.new(0, 5 * SC, 0, 0)
+    lbl.TextXAlignment = Enum.TextXAlignment.Left lbl.ZIndex = 11 lbl.Parent = row
     local keyBtn = Instance.new("TextButton")
-    keyBtn.Text = cfg.default.Name
-    keyBtn.TextColor3 = C.BG
-    keyBtn.Font = Enum.Font.GothamBlack
-    keyBtn.TextSize = 9 * SC
-    keyBtn.BackgroundColor3 = C.GRN
-    keyBtn.Size = UDim2.new(0, 42 * SC, 0, 16 * SC)
-    keyBtn.Position = UDim2.new(1, -48 * SC, 0.5, -8 * SC)
-    keyBtn.ZIndex = 12
-    keyBtn.Parent = row
+    keyBtn.Text = cfg.default.Name keyBtn.TextColor3 = C.BG keyBtn.Font = Enum.Font.GothamBlack keyBtn.TextSize = 9 * SC
+    keyBtn.BackgroundColor3 = C.GRN keyBtn.Size = UDim2.new(0, 48 * SC, 0, 14 * SC) keyBtn.Position = UDim2.new(1, -54 * SC, 0.5, -7 * SC)
+    keyBtn.ZIndex = 12 keyBtn.Parent = row
     Instance.new("UICorner", keyBtn).CornerRadius = UDim.new(0, 4)
-
-    cfg.key = cfg.default
-    cfg.keyBtn = keyBtn
-    table.insert(HKFrames, { frame = row, stroke = rowSt })
-
+    cfg.key = cfg.default cfg.keyBtn = keyBtn
+    table.insert(HKFrames, { frame = row, stroke = rowSt, label = lbl })
     task.spawn(function()
         while row and row.Parent and CoreActive do
-            TweenService:Create(rowSt, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { Thickness = 3.5, Color = C.GRN }):Play()
-            task.wait(0.8)
-            TweenService:Create(rowSt, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { Thickness = 1.5, Color = C.GRN }):Play()
-            task.wait(0.8)
+            TweenService:Create(rowSt, TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { Thickness = 3, Color = C.GRN_BRIGHT }):Play()
+            task.wait(0.6)
+            TweenService:Create(rowSt, TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { Thickness = 1.5, Color = C.GRN }):Play()
+            task.wait(0.6)
         end
     end)
-
     keyBtn.MouseButton1Click:Connect(function()
-        keyBtn.Text = "..."
-        local captured = false
-        local conn
+        keyBtn.Text = "..." local cap = false local conn
         conn = UIS.InputBegan:Connect(function(input, gpe)
             if gpe then return end
             if input.KeyCode ~= nil and input.KeyCode ~= Enum.KeyCode.Unknown then
-                captured = true
-                cfg.key = input.KeyCode
-                keyBtn.Text = input.KeyCode.Name
+                cap = true cfg.key = input.KeyCode keyBtn.Text = input.KeyCode.Name
+                ST.justBound = true ST.justBoundKey = input.KeyCode
                 if conn then conn:Disconnect() end
+                task.delay(0.3, function() ST.justBound = false ST.justBoundKey = nil end)
             end
         end)
-        task.delay(5, function()
-            if not captured then
-                keyBtn.Text = cfg.key.Name
-                if conn then conn:Disconnect() end
-            end
-        end)
+        task.delay(5, function() if not cap then keyBtn.Text = cfg.key.Name if conn then conn:Disconnect() end end end)
     end)
 end
 
-local P4Minimized = false
-P4Min.MouseButton1Click:Connect(function()
-    PS(SFX.Clk)
-    P4Minimized = not P4Minimized
-    P4Min.Text = P4Minimized and "+" or "-"
-    TweenService:Create(P4, TweenInfo.new(0.4, Enum.EasingStyle.Back), {
-        Size = P4Minimized and UDim2.new(0, 260 * SC, 0, 26 * SC) or UDim2.new(0, 260 * SC, 0, 200 * SC),
+if _LoadedSave.Hotkeys then
+    for _, cfg in ipairs(HotkeyConfig) do
+        if cfg.saveName and _LoadedSave.Hotkeys[cfg.saveName] then
+            local kName = _LoadedSave.Hotkeys[cfg.saveName] local kCode = Enum.KeyCode[kName]
+            if kCode then cfg.key = kCode if cfg.keyBtn then cfg.keyBtn.Text = kCode.Name end end
+        end
+    end
+end
+
+local P2Minimized = false
+P2Min.MouseButton1Click:Connect(function()
+    P2Minimized = not P2Minimized P2Min.Text = P2Minimized and "+" or "-"
+    TweenService:Create(P2, TweenInfo.new(0.4, Enum.EasingStyle.Back), {
+        Size = P2Minimized and UDim2.new(0, 310 * SC, 0, 26 * SC) or UDim2.new(0, 310 * SC, 0, 440 * SC)
     }):Play()
 end)
 
--- لوحة السرقة التلقائية
+local P3, P3Min = MakePanel(MainGui, L("controls"), 345, 260, 220, 270, true, "ControlsPanel")
+local bSpd = MakeSysBtn(P3, L("speed"), 10, 32, 95, 36)
+local bIJ = MakeSysBtn(P3, L("infjump"), 115, 32, 95, 36)
+local bBat = MakeSysBtn(P3, L("batcnt"), 10, 76, 95, 36)
+local bMed = MakeSysBtn(P3, L("medcnt"), 115, 76, 95, 36)
+local bRag = MakeSysBtn(P3, L("antirag"), 10, 120, 95, 36)
+local bATPD = MakeSysBtn(P3, L("autotpd"), 115, 120, 95, 36)
+local bLag = MakeSysBtn(P3, L("antilag"), 10, 164, 95, 36)
+local bFP = MakeSysBtn(P3, L("fpsboost"), 115, 164, 95, 36)
+
+local P3Minimized = false
+P3Min.MouseButton1Click:Connect(function()
+    P3Minimized = not P3Minimized P3Min.Text = P3Minimized and "+" or "-"
+    TweenService:Create(P3, TweenInfo.new(0.4, Enum.EasingStyle.Back), {
+        Size = P3Minimized and UDim2.new(0, 220 * SC, 0, 26 * SC) or UDim2.new(0, 220 * SC, 0, 270 * SC)
+    }):Play()
+end)
+
 local P1 = Instance.new("Frame")
-P1.Name = L("hub")
-P1.BackgroundColor3 = C.BG
-P1.BackgroundTransparency = 0.4
-P1.Size = UDim2.new(0, 220 * SC, 0, 60 * SC)
-P1.Position = UDim2.new(0.5, -110 * SC, 1, -140 * SC)
-P1.Parent = MainGui
-P1.ClipsDescendants = true
+P1.Name = L("hub") P1.BackgroundColor3 = C.BG P1.BackgroundTransparency = 0.3
+P1.Size = UDim2.new(0, 280 * SC, 0, 60 * SC) P1.Position = UDim2.new(0.5, -140 * SC, 1, -80 * SC) P1.Parent = MainGui P1.ClipsDescendants = true
 Instance.new("UICorner", P1).CornerRadius = UDim.new(0, 10)
-local P1St = Instance.new("UIStroke")
-P1St.Thickness = 2
-P1St.Color = C.GRN
-P1St.Parent = P1
-BorderGrad(P1St)
-local dragHandle1 = Instance.new("Frame")
-dragHandle1.Name = "DragHandle"
-dragHandle1.BackgroundTransparency = 1
-dragHandle1.Size = UDim2.new(1, 0, 1, 0)
-dragHandle1.ZIndex = 20
-dragHandle1.Parent = P1
-MakePanelDrag(P1, dragHandle1)
+AddGlow(P1, C.GRN, 6)
+local P1St = Instance.new("UIStroke") P1St.Thickness = 2 P1St.Color = C.GRN P1St.Parent = P1 BorderGrad(P1St)
+AddParticles(P1, 3)
+UIElements["HubPanel"] = P1
+local dh1 = Instance.new("Frame") dh1.BackgroundTransparency = 1 dh1.Size = UDim2.new(1, 0, 1, 0) dh1.ZIndex = 20 dh1.Parent = P1
+MakePanelDrag(P1, dh1)
 
 local TitleLbl = Instance.new("TextLabel")
-TitleLbl.Text = L("hub")
-TitleLbl.TextColor3 = C.GRN
-TitleLbl.Font = Enum.Font.GothamBlack
-TitleLbl.TextSize = 14 * SC
-TitleLbl.BackgroundTransparency = 1
-TitleLbl.Size = UDim2.new(0.6, 0, 0, 22 * SC)
-TitleLbl.Position = UDim2.new(0, 8 * SC, 0, 4 * SC)
-TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
-TitleLbl.ZIndex = 10
-TitleLbl.Parent = P1
+TitleLbl.Text = L("hub") TitleLbl.TextColor3 = C.GRN TitleLbl.Font = Enum.Font.GothamBlack TitleLbl.TextSize = 14 * SC
+TitleLbl.BackgroundTransparency = 1 TitleLbl.Size = UDim2.new(0.35, 0, 0, 22 * SC) TitleLbl.Position = UDim2.new(0, 8 * SC, 0, 4 * SC)
+TitleLbl.TextXAlignment = Enum.TextXAlignment.Left TitleLbl.ZIndex = 10 TitleLbl.Parent = P1
 TextGrad(TitleLbl)
 
+local ProgressPct = Instance.new("TextLabel")
+ProgressPct.Text = "0%" ProgressPct.TextColor3 = C.TXT ProgressPct.Font = Enum.Font.GothamBold ProgressPct.TextSize = 11 * SC
+ProgressPct.BackgroundTransparency = 1 ProgressPct.Size = UDim2.new(0, 40 * SC, 0, 16 * SC) ProgressPct.Position = UDim2.new(0.35, 0, 0, 6 * SC)
+ProgressPct.TextXAlignment = Enum.TextXAlignment.Left ProgressPct.ZIndex = 10 ProgressPct.Parent = P1
+
+local ProgressRadLbl = Instance.new("TextLabel")
+ProgressRadLbl.Text = L("steal_rad") .. ": " .. STEAL_RANGE ProgressRadLbl.TextColor3 = C.GRN ProgressRadLbl.Font = Enum.Font.GothamBold
+ProgressRadLbl.TextSize = 9 * SC ProgressRadLbl.BackgroundTransparency = 1
+ProgressRadLbl.Size = UDim2.new(0, 120 * SC, 0, 16 * SC) ProgressRadLbl.Position = UDim2.new(1, -125 * SC, 0, 6 * SC)
+ProgressRadLbl.TextXAlignment = Enum.TextXAlignment.Right ProgressRadLbl.ZIndex = 10 ProgressRadLbl.Parent = P1
+TextGrad(ProgressRadLbl)
+
 local SBg = Instance.new("Frame")
-SBg.BackgroundColor3 = C.DRK
-SBg.BorderSizePixel = 0
-SBg.Size = UDim2.new(0.55, 0, 0, 14 * SC)
-SBg.Position = UDim2.new(0.02, 0, 0, 32 * SC)
-SBg.ZIndex = 10
-SBg.Parent = P1
+SBg.BackgroundColor3 = C.DRK SBg.BorderSizePixel = 0 SBg.Size = UDim2.new(0.94, 0, 0, 12 * SC)
+SBg.Position = UDim2.new(0.03, 0, 0, 32 * SC) SBg.ZIndex = 10 SBg.Parent = P1
 Instance.new("UICorner", SBg).CornerRadius = UDim.new(0, 6)
-local SBs = Instance.new("UIStroke")
-SBs.Thickness = 1
-SBs.Color = C.GRN
-SBs.Parent = SBg
-BorderGrad(SBs)
+local SBgSt = Instance.new("UIStroke") SBgSt.Thickness = 1 SBgSt.Color = C.GRN SBgSt.Parent = SBg BorderGrad(SBgSt)
+
 local StealBar = Instance.new("Frame")
-StealBar.BackgroundColor3 = C.GRN
-StealBar.BorderSizePixel = 0
-StealBar.Size = UDim2.new(0, 0, 1, 0)
-StealBar.ZIndex = 10
-StealBar.Parent = SBg
+StealBar.BackgroundColor3 = C.GRN StealBar.BorderSizePixel = 0 StealBar.Size = UDim2.new(0, 0, 1, 0) StealBar.ZIndex = 10 StealBar.Parent = SBg
 Instance.new("UICorner", StealBar).CornerRadius = UDim.new(0, 6)
 
 local StealLabel = Instance.new("TextLabel")
-StealLabel.Text = L("steal_rdy")
-StealLabel.TextColor3 = C.TXT
-StealLabel.Font = Enum.Font.GothamBold
-StealLabel.TextSize = 10 * SC
-StealLabel.BackgroundTransparency = 1
-StealLabel.Size = UDim2.new(0.4, 0, 0, 14 * SC)
-StealLabel.Position = UDim2.new(0.6, 0, 0, 32 * SC)
-StealLabel.ZIndex = 10
-StealLabel.Parent = P1
+StealLabel.Text = L("steal_rdy") StealLabel.TextColor3 = C.TXT StealLabel.Font = Enum.Font.GothamBold StealLabel.TextSize = 9 * SC
+StealLabel.BackgroundTransparency = 1 StealLabel.Size = UDim2.new(0.94, 0, 0, 12 * SC) StealLabel.Position = UDim2.new(0.03, 0, 0, 46 * SC)
+StealLabel.TextXAlignment = Enum.TextXAlignment.Center StealLabel.ZIndex = 10 StealLabel.Parent = P1
 TextGrad(StealLabel)
 
-local ClBtn = Instance.new("TextButton")
-ClBtn.Text = "X"
-ClBtn.TextColor3 = C.GRN
-ClBtn.Font = Enum.Font.GothamBlack
-ClBtn.TextSize = 16 * SC
-ClBtn.BackgroundTransparency = 1
-ClBtn.Size = UDim2.new(0, 22 * SC, 0, 22 * SC)
-ClBtn.Position = UDim2.new(1, -24 * SC, 0, 2 * SC)
-ClBtn.ZIndex = 25
-ClBtn.Parent = P1
-Hover(ClBtn)
-
--- ==========================================
--- == 28. واجهة اللاقر (Lagger UI)        ==
--- ==========================================
+-- ===== LAGGER PANEL =====
 local Panel = Instance.new("Frame")
-Panel.Name = "EternalLagger"
-Panel.BackgroundColor3 = C.BG
-Panel.BackgroundTransparency = 0.35
-Panel.Size = UDim2.new(0, 240 * SC, 0, 100 * SC)
-Panel.Position = UDim2.new(0.5, -120 * SC, 0.08, 0)
-Panel.Parent = LaggerGui
-Panel.ClipsDescendants = true
+Panel.Name = "ExternalHub" Panel.BackgroundColor3 = C.BG Panel.BackgroundTransparency = 0.3
+Panel.Size = UDim2.new(0, 260 * SC, 0, 110 * SC) Panel.Position = UDim2.new(0.5, -130 * SC, 0.08, 0)
+Panel.Parent = LaggerGui Panel.ClipsDescendants = true
 Instance.new("UICorner", Panel).CornerRadius = UDim.new(0, 12)
-local PanelSt = Instance.new("UIStroke")
-PanelSt.Thickness = 2
-PanelSt.Color = C.GRN
-PanelSt.Parent = Panel
-local PanelGrad = Instance.new("UIGradient")
-PanelGrad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, C.BG), ColorSequenceKeypoint.new(0.2, C.GRN),
-    ColorSequenceKeypoint.new(0.4, C.BG), ColorSequenceKeypoint.new(0.6, C.GRN),
-    ColorSequenceKeypoint.new(0.8, C.BG), ColorSequenceKeypoint.new(1, C.GRN),
-})
-PanelGrad.Parent = PanelSt
-
-local DragH = Instance.new("Frame")
-DragH.Name = "DragHandle"
-DragH.BackgroundTransparency = 1
-DragH.Size = UDim2.new(1, 0, 0, 28 * SC)
-DragH.ZIndex = 20
-DragH.Parent = Panel
-MakePanelDrag(Panel, DragH)
+AddGlow(Panel, C.GRN, 8)
+local PanelSt = Instance.new("UIStroke") PanelSt.Thickness = 2 PanelSt.Color = C.GRN PanelSt.Parent = Panel BorderGrad(PanelSt)
+AddParticles(Panel, 6)
+UIElements["LaggerPanel"] = Panel
+local DrgH = Instance.new("Frame") DrgH.BackgroundTransparency = 1 DrgH.Size = UDim2.new(1, 0, 0, 28 * SC) DrgH.ZIndex = 20 DrgH.Parent = Panel
+MakePanelDrag(Panel, DrgH)
 
 local LTitle = Instance.new("TextLabel")
-LTitle.Name = "LagTitle"
-LTitle.Text = L("lagger_title")
-LTitle.TextColor3 = C.GRN
-LTitle.Font = Enum.Font.GothamBlack
-LTitle.TextSize = 14 * SC
-LTitle.BackgroundTransparency = 1
-LTitle.Size = UDim2.new(1, 0, 0, 24 * SC)
-LTitle.Position = UDim2.new(0, 0, 0, 4 * SC)
-LTitle.TextXAlignment = Enum.TextXAlignment.Center
-LTitle.ZIndex = 10
-LTitle.Parent = Panel
+LTitle.Text = "EXTERNAL HUB" LTitle.TextColor3 = C.GRN LTitle.Font = Enum.Font.GothamBlack LTitle.TextSize = 14 * SC
+LTitle.BackgroundTransparency = 1 LTitle.Size = UDim2.new(1, 0, 0, 24 * SC) LTitle.Position = UDim2.new(0, 0, 0, 4 * SC)
+LTitle.TextXAlignment = Enum.TextXAlignment.Center LTitle.ZIndex = 10 LTitle.Parent = Panel
 TextGrad(LTitle)
 
-local Sep = Instance.new("Frame")
-Sep.Size = UDim2.new(0.85, 0, 0, 1)
-Sep.Position = UDim2.new(0.075, 0, 0, 30 * SC)
-Sep.BackgroundColor3 = C.DIM
-Sep.BackgroundTransparency = 0.5
-Sep.BorderSizePixel = 0
-Sep.ZIndex = 10
-Sep.Parent = Panel
+local Sp = Instance.new("Frame")
+Sp.Size = UDim2.new(0.85, 0, 0, 1) Sp.Position = UDim2.new(0.075, 0, 0, 30 * SC)
+Sp.BackgroundColor3 = C.GRN Sp.BackgroundTransparency = 0.5 Sp.BorderSizePixel = 0 Sp.ZIndex = 10 Sp.Parent = Panel
 
--- صف التفعيل
 local TogRow = Instance.new("Frame")
-TogRow.Name = "TogRow"
-TogRow.BackgroundColor3 = C.DRK
-TogRow.BackgroundTransparency = 0.3
-TogRow.Size = UDim2.new(0.88, 0, 0, 30 * SC)
-TogRow.Position = UDim2.new(0.06, 0, 0, 40 * SC)
-TogRow.ZIndex = 10
-TogRow.Parent = Panel
+TogRow.BackgroundColor3 = C.DRK TogRow.BackgroundTransparency = 0.3
+TogRow.Size = UDim2.new(0.88, 0, 0, 30 * SC) TogRow.Position = UDim2.new(0.06, 0, 0, 40 * SC) TogRow.ZIndex = 10 TogRow.Parent = Panel
 Instance.new("UICorner", TogRow).CornerRadius = UDim.new(0, 8)
-local TogRowSt = Instance.new("UIStroke")
-TogRowSt.Thickness = 1.5
-TogRowSt.Color = C.GRN
-TogRowSt.Parent = TogRow
-local TogRowGrad = Instance.new("UIGradient")
-TogRowGrad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, C.BG), ColorSequenceKeypoint.new(0.25, C.GRN),
-    ColorSequenceKeypoint.new(0.5, C.BG), ColorSequenceKeypoint.new(0.75, C.GRN),
-    ColorSequenceKeypoint.new(1, C.BG),
-})
-TogRowGrad.Parent = TogRowSt
+local TogRowSt = Instance.new("UIStroke") TogRowSt.Thickness = 1.5 TogRowSt.Color = C.GRN TogRowSt.Parent = TogRow BorderGrad(TogRowSt)
 
 local TogLabel = Instance.new("TextLabel")
-TogLabel.Text = L("lagger_enable")
-TogLabel.TextColor3 = C.TXT
-TogLabel.Font = Enum.Font.GothamBlack
-TogLabel.TextSize = 10 * SC
-TogLabel.BackgroundTransparency = 1
-TogLabel.Size = UDim2.new(0.55, 0, 1, 0)
-TogLabel.Position = UDim2.new(0, 10 * SC, 0, 0)
-TogLabel.TextXAlignment = Enum.TextXAlignment.Left
-TogLabel.ZIndex = 11
-TogLabel.Parent = TogRow
-local TogLabelGrad = Instance.new("UIGradient")
-TogLabelGrad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, C.DIM), ColorSequenceKeypoint.new(0.5, C.TXT),
-    ColorSequenceKeypoint.new(1, C.DIM),
-})
-TogLabelGrad.Rotation = 90
-TogLabelGrad.Parent = TogLabel
+TogLabel.Text = L("lagger_enable") TogLabel.TextColor3 = C.TXT TogLabel.Font = Enum.Font.GothamBlack TogLabel.TextSize = 10 * SC
+TogLabel.BackgroundTransparency = 1 TogLabel.Size = UDim2.new(0.55, 0, 1, 0) TogLabel.Position = UDim2.new(0, 10 * SC, 0, 0)
+TogLabel.TextXAlignment = Enum.TextXAlignment.Left TogLabel.ZIndex = 11 TogLabel.Parent = TogRow
+TextGrad(TogLabel)
 
 local SwBg = Instance.new("Frame")
-SwBg.Size = UDim2.new(0, 34 * SC, 0, 16 * SC)
-SwBg.Position = UDim2.new(1, -44 * SC, 0.5, -8 * SC)
-SwBg.BackgroundColor3 = Color3.fromRGB(40, 15, 15)
-SwBg.ZIndex = 12
-SwBg.Parent = TogRow
+SwBg.Size = UDim2.new(0, 34 * SC, 0, 16 * SC) SwBg.Position = UDim2.new(1, -44 * SC, 0.5, -8 * SC)
+SwBg.BackgroundColor3 = Color3.fromRGB(40, 15, 15) SwBg.ZIndex = 12 SwBg.Parent = TogRow
 Instance.new("UICorner", SwBg).CornerRadius = UDim.new(0, 8)
 local SwKnob = Instance.new("Frame")
-SwKnob.Size = UDim2.new(0, 12 * SC, 0, 12 * SC)
-SwKnob.Position = UDim2.new(0, 2 * SC, 0.5, -6 * SC)
-SwKnob.BackgroundColor3 = C.RED
-SwKnob.ZIndex = 13
-SwKnob.Parent = SwBg
+SwKnob.Size = UDim2.new(0, 12 * SC, 0, 12 * SC) SwKnob.Position = UDim2.new(0, 2 * SC, 0.5, -6 * SC)
+SwKnob.BackgroundColor3 = C.RED SwKnob.ZIndex = 13 SwKnob.Parent = SwBg
 Instance.new("UICorner", SwKnob).CornerRadius = UDim.new(0, 6)
 local TogBtn = Instance.new("TextButton")
-TogBtn.Size = UDim2.new(1, 0, 1, 0)
-TogBtn.BackgroundTransparency = 1
-TogBtn.Text = ""
-TogBtn.ZIndex = 14
-TogBtn.Parent = TogRow
+TogBtn.Size = UDim2.new(1, 0, 1, 0) TogBtn.BackgroundTransparency = 1 TogBtn.Text = "" TogBtn.ZIndex = 14 TogBtn.Parent = TogRow
 
 local StatusLbl = Instance.new("TextLabel")
-StatusLbl.Text = L("lagger_off")
-StatusLbl.TextColor3 = C.RED
-StatusLbl.Font = Enum.Font.GothamBlack
-StatusLbl.TextSize = 8 * SC
-StatusLbl.BackgroundTransparency = 1
-StatusLbl.Size = UDim2.new(0, 22 * SC, 1, 0)
-StatusLbl.Position = UDim2.new(1, -72 * SC, 0, 0)
-StatusLbl.ZIndex = 11
-StatusLbl.Parent = TogRow
+StatusLbl.Text = L("lagger_off") StatusLbl.TextColor3 = C.RED StatusLbl.Font = Enum.Font.GothamBlack StatusLbl.TextSize = 8 * SC
+StatusLbl.BackgroundTransparency = 1 StatusLbl.Size = UDim2.new(0, 22 * SC, 1, 0)
+StatusLbl.Position = UDim2.new(1, -72 * SC, 0, 0) StatusLbl.ZIndex = 11 StatusLbl.Parent = TogRow
 
--- صف الكي باند
 local KeyRow = Instance.new("Frame")
-KeyRow.Name = "KeyRow"
-KeyRow.BackgroundColor3 = C.DRK
-KeyRow.BackgroundTransparency = 0.3
-KeyRow.Size = UDim2.new(0.88, 0, 0, 28 * SC)
-KeyRow.Position = UDim2.new(0.06, 0, 0, 78 * SC)
-KeyRow.ZIndex = 10
-KeyRow.Parent = Panel
+KeyRow.BackgroundColor3 = C.DRK KeyRow.BackgroundTransparency = 0.3
+KeyRow.Size = UDim2.new(0.88, 0, 0, 28 * SC) KeyRow.Position = UDim2.new(0.06, 0, 0, 78 * SC) KeyRow.ZIndex = 10 KeyRow.Parent = Panel
 Instance.new("UICorner", KeyRow).CornerRadius = UDim.new(0, 6)
-local KeyRowSt = Instance.new("UIStroke")
-KeyRowSt.Thickness = 1
-KeyRowSt.Color = C.GRN
-KeyRowSt.Parent = KeyRow
-local KeyRowGrad = Instance.new("UIGradient")
-KeyRowGrad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, C.BG), ColorSequenceKeypoint.new(0.25, C.GRN),
-    ColorSequenceKeypoint.new(0.5, C.BG), ColorSequenceKeypoint.new(0.75, C.GRN),
-    ColorSequenceKeypoint.new(1, C.BG),
-})
-KeyRowGrad.Parent = KeyRowSt
+local KeyRowSt = Instance.new("UIStroke") KeyRowSt.Thickness = 1 KeyRowSt.Color = C.GRN KeyRowSt.Parent = KeyRow BorderGrad(KeyRowSt)
 
 local KeyLabel = Instance.new("TextLabel")
-KeyLabel.Text = L("lagger_keybind")
-KeyLabel.TextColor3 = C.TXT
-KeyLabel.Font = Enum.Font.GothamBlack
-KeyLabel.TextSize = 10 * SC
-KeyLabel.BackgroundTransparency = 1
-KeyLabel.Size = UDim2.new(0.45, 0, 1, 0)
-KeyLabel.Position = UDim2.new(0, 8 * SC, 0, 0)
-KeyLabel.TextXAlignment = Enum.TextXAlignment.Left
-KeyLabel.ZIndex = 11
-KeyLabel.Parent = KeyRow
+KeyLabel.Text = L("lagger_keybind") KeyLabel.TextColor3 = C.TXT KeyLabel.Font = Enum.Font.GothamBlack KeyLabel.TextSize = 10 * SC
+KeyLabel.BackgroundTransparency = 1 KeyLabel.Size = UDim2.new(0, 0.45, 1, 0)
+KeyLabel.Position = UDim2.new(0, 8 * SC, 0, 0) KeyLabel.TextXAlignment = Enum.TextXAlignment.Left KeyLabel.ZIndex = 11 KeyLabel.Parent = KeyRow
 
 local KeyBtn = Instance.new("TextButton")
-KeyBtn.Size = UDim2.new(0, 50 * SC, 0, 18 * SC)
-KeyBtn.Position = UDim2.new(1, -58 * SC, 0.5, -9 * SC)
-KeyBtn.BackgroundColor3 = C.BG
-KeyBtn.TextColor3 = C.TXT
-KeyBtn.Font = Enum.Font.GothamBlack
-KeyBtn.TextSize = 9 * SC
-KeyBtn.Text = "[ -- ]"
-KeyBtn.ZIndex = 12
-KeyBtn.Parent = KeyRow
+KeyBtn.Size = UDim2.new(0, 50 * SC, 0, 18 * SC) KeyBtn.Position = UDim2.new(1, -58 * SC, 0.5, -9 * SC)
+KeyBtn.BackgroundColor3 = C.BG KeyBtn.TextColor3 = C.TXT KeyBtn.Font = Enum.Font.GothamBlack KeyBtn.TextSize = 9 * SC
+KeyBtn.Text = "[ -- ]" KeyBtn.ZIndex = 12 KeyBtn.Parent = KeyRow
 Instance.new("UICorner", KeyBtn).CornerRadius = UDim.new(0, 4)
-local KeySt = Instance.new("UIStroke")
-KeySt.Thickness = 1
-KeySt.Color = C.GRN
-KeySt.Parent = KeyBtn
-local KeyGrad = Instance.new("UIGradient")
-KeyGrad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, C.BG), ColorSequenceKeypoint.new(0.25, C.GRN),
-    ColorSequenceKeypoint.new(0.5, C.BG), ColorSequenceKeypoint.new(0.75, C.GRN),
-    ColorSequenceKeypoint.new(1, C.BG),
-})
-KeyGrad.Parent = KeySt
+local KeySt = Instance.new("UIStroke") KeySt.Thickness = 1 KeySt.Color = C.GRN KeySt.Parent = KeyBtn BorderGrad(KeySt)
 Hover(KeyBtn, C.HVR, C.BG)
 
--- ==========================================
--- == 29. دوال التحكم (Control Functions)  ==
--- ==========================================
-local function setToggleVisual(state)
-    local col = state and C.MID_COL or C.RED
-    local newPos = state and UDim2.new(1, -14 * SC, 0.5, -6 * SC) or UDim2.new(0, 2 * SC, 0.5, -6 * SC)
-    TweenService:Create(SwKnob, TweenInfo.new(0.15), { Position = newPos, BackgroundColor3 = state and col or C.RED }):Play()
-    TweenService:Create(SwBg, TweenInfo.new(0.15), { BackgroundColor3 = state and Color3.fromRGB(20, 50, 30) or Color3.fromRGB(40, 15, 15) }):Play()
-    StatusLbl.Text = state and L("lagger_on") or L("lagger_off")
-    StatusLbl.TextColor3 = state and col or C.RED
+if _LoadedSave.LaggerKey then
+    local kCode = Enum.KeyCode[_LoadedSave.LaggerKey]
+    if kCode then LAG_ST.boundKey = kCode KeyBtn.Text = "[ " .. _LoadedSave.LaggerKey .. " ]" end
+end
+
+-- ===== SPEED DISPLAY ABOVE PLAYERS =====
+
+local SpdGuis = {}
+
+local function CreateSpdGui(ch)
+    local hr = ch:WaitForChild("HumanoidRootPart", 5)
+    if not hr then return end
+
+    if SpdGuis[ch] then
+        pcall(function()
+            SpdGuis[ch]:Destroy()
+        end)
+    end
+
+    local bb = Instance.new("BillboardGui")
+    bb.Name = "ExtSpdUI"
+    bb.Adornee = hr
+    bb.Size = UDim2.new(0, 180, 0, 55)
+    bb.StudsOffset = Vector3.new(0, 3, 0)
+    bb.AlwaysOnTop = true
+    bb.MaxDistance = 1000
+    bb.Parent = ch
+
+    local t = Instance.new("TextLabel")
+    t.Name = "SpeedText"
+    t.Text = "0"
+    t.TextColor3 = C.GRN
+    t.Font = Enum.Font.GothamBlack
+    t.TextSize = 22
+    t.BackgroundTransparency = 1
+    t.Size = UDim2.new(1, 0, 0, 28)
+    t.ZIndex = 2
+    t.Parent = bb
+
+    TextGrad(t)
+
+    local dt = Instance.new("TextLabel")
+    dt.Name = "DiscordText"
+    dt.Text = "discord.gg/74uPHYN2s4" -- ضع النص هنا
+    dt.TextColor3 = C.GRN_DARK
+    dt.Font = Enum.Font.GothamBlack
+    dt.TextSize = 12
+    dt.BackgroundTransparency = 1
+    dt.Size = UDim2.new(1, 0, 0, 18)
+    dt.Position = UDim2.new(0, 0, 0, 28)
+    dt.ZIndex = 2
+    dt.Parent = bb
+
+    TextGrad(dt)
+
+    SpdGuis[ch] = bb
+end
+
+Players.PlayerRemoving:Connect(function(p)
+    if p.Character and SpdGuis[p.Character] then
+        pcall(function()
+            SpdGuis[p.Character]:Destroy()
+        end)
+
+        SpdGuis[p.Character] = nil
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+
+    if not (_G.ExtRunning and CoreActive) then
+        return
+    end
+
+    for _, p in ipairs(Players:GetPlayers()) do
+
+        local ch = p.Character
+        if not ch then
+            continue
+        end
+
+        local hr = ch:FindFirstChild("HumanoidRootPart")
+        if not hr then
+            continue
+        end
+
+        if not SpdGuis[ch] or not SpdGuis[ch].Parent then
+            CreateSpdGui(ch)
+        end
+
+        local bb = SpdGuis[ch]
+
+        if bb then
+
+            if bb.Adornee ~= hr then
+                bb.Adornee = hr
+            end
+
+            local txt = bb:FindFirstChild("SpeedText")
+
+            if txt then
+                local velocity = hr.AssemblyLinearVelocity
+                local speed = math.floor(Vector3.new(
+                    velocity.X,
+                    0,
+                    velocity.Z
+                ).Magnitude + 0.5)
+
+                txt.Text = string.format("%d SPS", speed)
+            end
+        end
+    end
+end)
+
+local function RestorePositions()
+    if _LoadedSave.Positions then
+        for name, pos in pairs(_LoadedSave.Positions) do
+            local elem = UIElements[name]
+            if elem and elem.Parent and pos.X and pos.Y then
+                pcall(function() elem.Position = UDim2.new(pos.X.Scale, pos.X.Offset, pos.Y.Scale, pos.Y.Offset) end)
+            end
+        end
+    end
+end
+
+RestorePositions()
+
+local function setToggleVisual(st)
+    local col = st and C.GRN_BRIGHT or C.RED
+    local np = st and UDim2.new(1, -14 * SC, 0.5, -6 * SC) or UDim2.new(0, 2 * SC, 0.5, -6 * SC)
+    TweenService:Create(SwKnob, TweenInfo.new(0.15), { Position = np, BackgroundColor3 = st and col or C.RED }):Play()
+    TweenService:Create(SwBg, TweenInfo.new(0.15), { BackgroundColor3 = st and Color3.fromRGB(20, 50, 30) or Color3.fromRGB(40, 15, 15) }):Play()
+    StatusLbl.Text = st and L("lagger_on") or L("lagger_off")
+    StatusLbl.TextColor3 = st and col or C.RED
 end
 
 local function UpdateMode()
@@ -2293,387 +1602,34 @@ local function UpdateMode()
     if bModeF then bModeF.Text = L("mode_toggle") .. ": " .. L(ST.SpdMode:lower()) end
 end
 
-local PrevSpdMode = "NORMAL" -- حفظ المود السابق قبل اللاقر
+local PrevSpdMode = "NORMAL"
 
 local function toggleLagger()
     if LAG_ST.LaggerOn then
         stopLagger()
-        -- 🔧 إصلاح: لما يطفي اللاقر يرجع المود للي كان قبل
         if ST.SpdMode == "LAGGER" then
             ST.SpdMode = PrevSpdMode
             BX.J.Text = tostring(PrevSpdMode == "LAGGER" and LIMITS.LAGGER_JUMP or LIMITS.NORMAL_JUMP)
             UpdateMode()
         end
-        Notify(L("lagger_title"), L("lagger_off"), 2, C.RED)
+        Notify("EXTERNAL HUB", L("lagger_off"), 2, C.RED)
     else
-        -- 🔧 إصلاح: لما يتفعل اللاقر يغير المود تلقائياً لـ LAGGER
         PrevSpdMode = ST.SpdMode
         ST.SpdMode = "LAGGER"
         BX.J.Text = tostring(LIMITS.LAGGER_JUMP)
         UpdateMode()
         startLagger()
-        Notify(L("lagger_title"), L("lagger_on"), 2, C.MID_COL)
+        Notify("EXTERNAL HUB", L("lagger_on"), 2, C.GRN)
     end
     setToggleVisual(LAG_ST.LaggerOn)
 end
 
-local function UpdateLang()
-    bLangF.Text = L("langbtn")
-    UpdateMode()
-    bLockF.Text = L("lock")
-    bTPDF.Text = L("tpdown")
-    bDropF.Text = L("drop")
-    bIRSF.Text = L("instarst")
-    bSpd.Text = L("speed")
-    bIJ.Text = L("infjump")
-    bBat.Text = L("batcnt")
-    bMed.Text = L("medcnt")
-    bRag.Text = L("antirag")
-    bATPD.Text = L("autotpd")
-    bLag.Text = L("antilag")
-    bFP.Text = L("fpsboost")
-    StealLabel.Text = L("steal_rdy")
-    TitleLbl.Text = L("hub")
-    LTitle.Text = L("lagger_title")
-    TogLabel.Text = L("lagger_enable")
-    StatusLbl.Text = LAG_ST.LaggerOn and L("lagger_on") or L("lagger_off")
-    KeyLabel.Text = L("lagger_keybind")
-    BXLabels.N.Text = L("n_spd")
-    BXLabels.S.Text = L("s_spd")
-    BXLabels.J.Text = L("j_pwr")
-    BXLabels.TPD.Text = L("tpd_h")
-    BXLabels.LN.Text = L("l_n_spd")
-    BXLabels.LS.Text = L("l_s_spd")
-    HotkeyConfig[1].name = L("hk_lock")
-    HotkeyConfig[2].name = L("hk_tpd")
-    HotkeyConfig[3].name = L("hk_drop")
-    HotkeyConfig[4].name = L("hk_ir")
-    HotkeyConfig[5].name = L("hk_mode")
-    HotkeyConfig[6].name = L("hk_lang")
-    HKInfo.Text = L("hk_info")
-    for i, cfg in ipairs(HotkeyConfig) do
-        local r = HKFrames[i]
-        if r then
-            local l = r.frame:FindFirstChild("HKLabel")
-            if l then l.Text = cfg.name end
-        end
-    end
-end
-
--- ==========================================
--- == 30. ربط الأزرار والهوت كيز (Handlers) ==
--- ==========================================
-TogBtn.MouseButton1Click:Connect(function()
-    PS(SFX.Tgl)
-    toggleLagger()
-end)
-
-KeyBtn.MouseButton1Click:Connect(function()
-    PS(SFX.Clk)
-    LAG_ST.listening = true
-    KeyBtn.Text = "[ ... ]"
-    TweenService:Create(KeyBtn, TweenInfo.new(0.3), { TextColor3 = C.GRN }):Play()
-end)
-
-Trk(UIS.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    -- معالجة مفتاح اللاقر
-    if LAG_ST.listening then
-        if input.UserInputType == Enum.UserInputType.Keyboard then
-            LAG_ST.boundKey = input.KeyCode
-            KeyBtn.Text = "[ " .. tostring(input.KeyCode):sub(14) .. " ]"
-            LAG_ST.listening = false
-            TweenService:Create(KeyBtn, TweenInfo.new(0.3), { TextColor3 = C.TXT }):Play()
-        end
-        return -- لا نعالج أي هوتكي أثناء الاستماع لمفتاح اللاقر
-    end
-
-    -- مفتاح اللاقر
-    if LAG_ST.boundKey and input.KeyCode == LAG_ST.boundKey then
-        PS(SFX.Tgl)
-        toggleLagger()
-        return
-    end
-
-    -- باقي الهوت كيز
-    for _, cfg in ipairs(HotkeyConfig) do
-        if input.KeyCode == cfg.key then
-            if cfg.btn == bLockF then tLK()
-            elseif cfg.btn == bTPDF then DoTPDown()
-            elseif cfg.btn == bDropF then DoDrop()
-            elseif cfg.btn == bIRSF then IRS_ActivateReset()
-            elseif cfg.btn == bModeF then
-                PS(SFX.Tgl)
-                if ST.SpdMode == "NORMAL" then
-                    ST.SpdMode = "LAGGER"
-                    BX.J.Text = tostring(LIMITS.LAGGER_JUMP)
-                else
-                    ST.SpdMode = "NORMAL"
-                    BX.J.Text = tostring(LIMITS.NORMAL_JUMP)
-                end
-                UpdateMode()
-            elseif cfg.btn == bLangF then
-                PS(SFX.Tgl)
-                Lang = Lang == "EN" and "AR" or "EN"
-                UpdateLang()
-            end
-        end
-    end
-end))
-
-bLockF.MouseButton1Click:Connect(tLK)
-bTPDF.MouseButton1Click:Connect(DoTPDown)
-bDropF.MouseButton1Click:Connect(DoDrop)
-bIRSF.MouseButton1Click:Connect(IRS_ActivateReset)
-bModeF.MouseButton1Click:Connect(function()
-    PS(SFX.Tgl)
-    if ST.SpdMode == "NORMAL" then
-        ST.SpdMode = "LAGGER"
-        BX.J.Text = tostring(LIMITS.LAGGER_JUMP)
-    else
-        ST.SpdMode = "NORMAL"
-        BX.J.Text = tostring(LIMITS.NORMAL_JUMP)
-    end
-    UpdateMode()
-end)
-bLangF.MouseButton1Click:Connect(function()
-    PS(SFX.Tgl)
-    Lang = Lang == "EN" and "AR" or "EN"
-    UpdateLang()
-end)
-bSpd.MouseButton1Click:Connect(ToggleSpeed)
-bIJ.MouseButton1Click:Connect(ToggleInfJump)
-bBat.MouseButton1Click:Connect(function()
-    ST.BatCntOn = not ST.BatCntOn
-    PS(SFX.Tgl)
-    if ST.BatCntOn then StartBatCnt() else StopBatCnt() end
-end)
-bMed.MouseButton1Click:Connect(function()
-    ST.MedCntOn = not ST.MedCntOn
-    PS(SFX.Tgl)
-    if ST.MedCntOn then
-        SetupMedusa(LP.Character)
-    else
-        for _, c in pairs(ST.MedConns) do pcall(function() c:Disconnect() end) end
-        ST.MedConns = {}
-    end
-end)
-bRag.MouseButton1Click:Connect(function()
-    if not ST.AntiRagOn then EnableAntiRag() else DisableAntiRag() end
-    PS(SFX.Tgl)
-end)
-bATPD.MouseButton1Click:Connect(function() ToggleAutoTPD(not ST.AutoTPDOn) end)
-bLag.MouseButton1Click:Connect(function() if not ST.AntiLagOn then ToggleAntiLag() end end)
-bFP.MouseButton1Click:Connect(function() if not ST.FPSBoostOn then ToggleFPSBoost() end end)
-
--- ==========================================
--- == 31. نظام الإغلاق الشامل (Exit)       ==
--- ==========================================
-local ExF = Instance.new("Frame")
-ExF.BackgroundColor3 = C.BG
-ExF.BackgroundTransparency = 0.05
-ExF.Position = UDim2.new(0.5, -110 * SC, 0.5, -50 * SC)
-ExF.Size = UDim2.new(0, 220 * SC, 0, 100 * SC)
-ExF.Parent = MainGui
-ExF.Visible = false
-Instance.new("UICorner", ExF).CornerRadius = UDim.new(0, 10)
-local exs = Instance.new("UIStroke")
-exs.Thickness = 2
-exs.Color = C.GRN
-exs.Parent = ExF
-BorderGrad(exs)
-
-local ExT = Instance.new("TextLabel")
-ExT.Text = L("exit_t")
-ExT.TextColor3 = C.TXT
-ExT.Font = Enum.Font.GothamBold
-ExT.TextSize = 14 * SC
-ExT.BackgroundTransparency = 1
-ExT.Size = UDim2.new(1, 0, 0, 30 * SC)
-ExT.Position = UDim2.new(0, 0, 0, 10 * SC)
-ExT.Parent = ExF
-TextGrad(ExT)
-
-local YBtn = Instance.new("TextButton")
-YBtn.Text = L("yes")
-YBtn.TextColor3 = C.BG
-YBtn.Font = Enum.Font.GothamBold
-YBtn.TextSize = 13 * SC
-YBtn.BackgroundColor3 = C.GRN
-YBtn.Position = UDim2.new(0.05, 0, 0, 55 * SC)
-YBtn.Size = UDim2.new(0.42, 0, 0, 32 * SC)
-YBtn.Parent = ExF
-Instance.new("UICorner", YBtn).CornerRadius = UDim.new(0, 6)
-Hover(YBtn, Color3.fromRGB(0, 200, 80), C.GRN)
-ClkFX(YBtn)
-
-local NBtn = Instance.new("TextButton")
-NBtn.Text = L("no")
-NBtn.TextColor3 = C.BG
-NBtn.Font = Enum.Font.GothamBold
-NBtn.TextSize = 13 * SC
-NBtn.BackgroundColor3 = C.GRN
-NBtn.Position = UDim2.new(0.53, 0, 0, 55 * SC)
-NBtn.Size = UDim2.new(0.42, 0, 0, 32 * SC)
-NBtn.Parent = ExF
-Instance.new("UICorner", NBtn).CornerRadius = UDim.new(0, 6)
-Hover(NBtn, Color3.fromRGB(0, 200, 80), C.GRN)
-ClkFX(NBtn)
-
-local function ExitScript()
-    PS(SFX.Exit)
-    CoreActive = false
-    _G.ExtRunning = false
-    _G.ExtLagRunning = false
-
-    -- إيقاف جميع الأنظمة
-    ST.LKA = false
-    ST.LockOn = false
-    ST.SpeedBoostOn = false
-    ST.InfJumpOn = false
-    ST.AutoStealOn = false
-    ST.AutoTPDOn = false
-    ST.AntiRagOn = false
-    ST.SpoofActive = false
-    ST.IRS_isExecuting = false
-
-    -- إيقاف اللاقر
-    stopLagger()
-
-    -- تنظيف القفل
-    sP()
-
-    -- إيقاف السرعة
-    StopSpeed()
-
-    -- إيقاف الإسقاط
-    StopDrop()
-
-    -- إيقاف عداد المضرب
-    StopBatCnt()
-
-    -- إيقاف مضاد السقوط
-    DisableAntiRag()
-
-    -- إيقاف النزول التلقائي
-    ToggleAutoTPD(false)
-
-    -- فصل جميع الاتصالات
-    DisAll()
-
-    -- فصل اتصالات إضافية
-    if ST.IJC then ST.IJC:Disconnect() end
-    if ST.JHC then ST.JHC:Disconnect() end
-    for _, c in pairs(ST.MedConns) do pcall(function() c:Disconnect() end) end
-    ST.MedConns = {}
-
-    -- تنظيف السرعة
-    local h = gH()
-    if h then h.Velocity = Vector3.new(0, 0, 0) end
-
-    -- حفظ قبل الإغلاق
-    SaveSave()
-
-    -- تنظيف مجلدات ESP والرئيسي
-    pcall(function() ESPFolder:Destroy() end)
-    pcall(function() MainFolder:Destroy() end)
-end
-
-ClBtn.MouseButton1Click:Connect(function()
-    PS(SFX.Err)
-    ExF.Visible = true
-end)
-NBtn.MouseButton1Click:Connect(function()
-    PS(SFX.Clk)
-    ExF.Visible = false
-end)
-YBtn.MouseButton1Click:Connect(ExitScript)
-
--- ==========================================
--- == 32. بدء الأنظمة التلقائية (Auto Start) ==
--- ==========================================
-ToggleSpeed()
-ToggleInfJump()
-
-ST.BatCntOn = true
-StartBatCnt()
-
-ST.MedCntOn = true
-SetupMedusa(LP.Character)
-
-EnableAntiRag()
-
--- ==========================================
--- == 33. واجهة السرعة فوق الرأس (Speed GUI) ==
--- ==========================================
-local SpdGuis = {}
-local function CreateSpdGui(char)
-    local hr = char:WaitForChild("HumanoidRootPart", 5)
-    if not hr then return end
-    if SpdGuis[char] then pcall(function() SpdGuis[char]:Destroy() end) end
-    local bb = Instance.new("BillboardGui")
-    bb.Name = "ExtSpdUI"
-    bb.Adornee = hr
-    bb.Size = UDim2.new(0, 100, 0, 30)
-    bb.StudsOffset = Vector3.new(0, 4, 0)
-    bb.AlwaysOnTop = true
-    bb.MaxDistance = 1000
-    bb.Parent = char
-    local t = Instance.new("TextLabel")
-    t.Text = "0.0"
-    t.TextColor3 = C.GRN
-    t.Font = Enum.Font.GothamBlack
-    t.TextSize = 16
-    t.BackgroundTransparency = 1
-    t.Size = UDim2.new(1, 0, 1, 0)
-    t.ZIndex = 2
-    t.Parent = bb
-    TextGrad(t)
-    SpdGuis[char] = bb
-end
-
--- 🔧 إصلاح: تنظيف Speed GUI عند إزالة الشخصية
-Players.PlayerRemoving:Connect(function(player)
-    if player.Character and SpdGuis[player.Character] then
-        pcall(function() SpdGuis[player.Character]:Destroy() end)
-        SpdGuis[player.Character] = nil
-    end
-end)
-
-task.spawn(function()
-    while _G.ExtRunning and CoreActive do
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p.Character then
-                local hr = p.Character:FindFirstChild("HumanoidRootPart")
-                if hr then
-                    if not SpdGuis[p.Character] or not SpdGuis[p.Character].Parent then
-                        CreateSpdGui(p.Character)
-                    else
-                        local bb = SpdGuis[p.Character]
-                        if bb.Adornee ~= hr then bb.Adornee = hr end
-                        local txt = bb:FindFirstChildOfClass("TextLabel")
-                        if txt then
-                            local v = hr.Velocity
-                            txt.Text = string.format("%.1f", Vector3.new(v.X, 0, v.Z).Magnitude)
-                        end
-                    end
-                end
-            end
-        end
-        task.wait(0.1)
-    end
-end)
-
--- ==========================================
--- == 34. تحديث الواجهات بالوقت الحقيقي   ==
--- ==========================================
-Trk(RunService.RenderStepped:Connect(function()
-    bLockF:SetAttribute("On", ST.LKA)
+local function SyncToggles()
+    bLockF:SetAttribute("On", ST.LockOn)
     bTPDF:SetAttribute("On", false)
     bDropF:SetAttribute("On", false)
     bIRSF:SetAttribute("On", false)
     bModeF:SetAttribute("On", ST.SpdMode == "LAGGER")
-    bLangF:SetAttribute("On", true)
     bSpd:SetAttribute("On", ST.SpeedBoostOn)
     bIJ:SetAttribute("On", ST.InfJumpOn)
     bBat:SetAttribute("On", ST.BatCntOn)
@@ -2682,78 +1638,131 @@ Trk(RunService.RenderStepped:Connect(function()
     bATPD:SetAttribute("On", ST.AutoTPDOn)
     bLag:SetAttribute("On", ST.AntiLagOn)
     bFP:SetAttribute("On", ST.FPSBoostOn)
+end
 
-    if ST.isStealing and ST.stealStart then
-        local p = math.clamp((tick() - ST.stealStart) / STEAL_DELAY, 0, 1)
-        TweenService:Create(StealBar, TweenInfo.new(0.1), { Size = UDim2.new(p, 0, 1, 0) }):Play()
-        if StealLabel then StealLabel.Text = L("stealing") .. " " .. math.floor(p * 100) .. "%" end
-    else
-        if StealBar and StealBar.Size.X.Scale > 0.01 then
-            TweenService:Create(StealBar, TweenInfo.new(0.2), { Size = UDim2.new(0, 0, 1, 0) }):Play()
+local function UpdateLang()
+    bLockF.Text = L("lock") bTPDF.Text = L("tpdown") bDropF.Text = L("drop")
+    bIRSF.Text = L("instarst") bModeF.Text = L("mode_toggle") .. ": " .. L(ST.SpdMode:lower())
+    LangBtn.Text = L("langbtn") bSpd.Text = L("speed") bIJ.Text = L("infjump")
+    bBat.Text = L("batcnt") bMed.Text = L("medcnt") bRag.Text = L("antirag")
+    bATPD.Text = L("autotpd") bLag.Text = L("antilag") bFP.Text = L("fpsboost")
+    StealLabel.Text = L("steal_rdy") TitleLbl.Text = L("hub")
+    TogLabel.Text = L("lagger_enable")
+    StatusLbl.Text = LAG_ST.LaggerOn and L("lagger_on") or L("lagger_off")
+    KeyLabel.Text = L("lagger_keybind")
+    BXLabels.N.Text = L("n_spd") BXLabels.S.Text = L("s_spd") BXLabels.J.Text = L("j_pwr")
+    BXLabels.TPD.Text = L("tpd_h") BXLabels.LN.Text = L("l_n_spd") BXLabels.LS.Text = L("l_s_spd")
+    LangLbl.Text = L("lang_setting") HKTitle.Text = L("hk_info")
+    for _, pnl in ipairs({P2, P3}) do
+        local tl = pnl:FindFirstChild("PanelTitle")
+        if tl then
+            if pnl == P2 then tl.Text = L("spd_chg") elseif pnl == P3 then tl.Text = L("controls") end
         end
-        if StealLabel then StealLabel.Text = L("steal_rdy") end
+    end
+    HotkeyConfig[1].name = L("hk_lock") HotkeyConfig[2].name = L("hk_tpd") HotkeyConfig[3].name = L("hk_drop")
+    HotkeyConfig[4].name = L("hk_ir") HotkeyConfig[5].name = L("hk_mode") HotkeyConfig[6].name = L("hk_lang")
+    for i, cfg in ipairs(HotkeyConfig) do local r = HKFrames[i] if r and r.label then r.label.Text = cfg.name end end
+end
+
+TogBtn.MouseButton1Click:Connect(toggleLagger)
+KeyBtn.MouseButton1Click:Connect(function()
+    LAG_ST.listening = true KeyBtn.Text = "[ ... ]"
+    TweenService:Create(KeyBtn, TweenInfo.new(0.3), { TextColor3 = C.GRN }):Play()
+end)
+
+Trk(UIS.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if LAG_ST.listening then
+        if input.UserInputType == Enum.UserInputType.Keyboard then
+            LAG_ST.boundKey = input.KeyCode KeyBtn.Text = "[ " .. tostring(input.KeyCode):sub(14) .. " ]"
+            LAG_ST.listening = false
+            TweenService:Create(KeyBtn, TweenInfo.new(0.3), { TextColor3 = C.TXT }):Play()
+            ST.justBound = true ST.justBoundKey = input.KeyCode
+            task.delay(0.3, function() ST.justBound = false ST.justBoundKey = nil end)
+        end
+        return
+    end
+    if ST.justBound and ST.justBoundKey and input.KeyCode == ST.justBoundKey then return end
+    if LAG_ST.boundKey and input.KeyCode == LAG_ST.boundKey then toggleLagger() return end
+    for _, cfg in ipairs(HotkeyConfig) do
+        if input.KeyCode == cfg.key then
+            if cfg.btn == bLockF then tLK()
+            elseif cfg.btn == bTPDF then DoTPDown()
+            elseif cfg.btn == bDropF then DoDrop()
+            elseif cfg.btn == bIRSF then IRS_ActivateReset()
+            elseif cfg.btn == bModeF then
+                if ST.SpdMode == "NORMAL" then ST.SpdMode = "LAGGER" BX.J.Text = tostring(LIMITS.LAGGER_JUMP)
+                else ST.SpdMode = "NORMAL" BX.J.Text = tostring(LIMITS.NORMAL_JUMP) end
+                UpdateMode() SyncToggles()
+            elseif cfg.btn == LangBtn then Lang = Lang == "EN" and "AR" or "EN" UpdateLang() end
+        end
     end
 end))
 
--- نبض الحدود للاقر
-task.spawn(function()
-    while Panel and Panel.Parent and _G.ExtRunning and CoreActive do
-        if LAG_ST.LaggerOn then
-            TweenService:Create(PanelSt, TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { Thickness = 3.5, Color = C.MID_COL }):Play()
-            TweenService:Create(TogRowSt, TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { Thickness = 3, Color = C.MID_COL }):Play()
-            task.wait(0.7)
-            TweenService:Create(PanelSt, TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { Thickness = 1.5, Color = C.MID_COL }):Play()
-            TweenService:Create(TogRowSt, TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { Thickness = 1.5, Color = C.MID_COL }):Play()
-            task.wait(0.7)
-        else
-            TweenService:Create(PanelSt, TweenInfo.new(0.5), { Thickness = 2, Color = C.GRN }):Play()
-            TweenService:Create(TogRowSt, TweenInfo.new(0.5), { Thickness = 1.5, Color = C.GRN }):Play()
-            task.wait(1)
-        end
-    end
+bLockF.MouseButton1Click:Connect(function() tLK() SyncToggles() end)
+bTPDF.MouseButton1Click:Connect(DoTPDown)
+bDropF.MouseButton1Click:Connect(DoDrop)
+bIRSF.MouseButton1Click:Connect(IRS_ActivateReset)
+bModeF.MouseButton1Click:Connect(function()
+    if ST.SpdMode == "NORMAL" then ST.SpdMode = "LAGGER" BX.J.Text = tostring(LIMITS.LAGGER_JUMP)
+    else ST.SpdMode = "NORMAL" BX.J.Text = tostring(LIMITS.NORMAL_JUMP) end
+    UpdateMode() SyncToggles()
 end)
+LangBtn.MouseButton1Click:Connect(function() Lang = Lang == "EN" and "AR" or "EN" UpdateLang() end)
+bSpd.MouseButton1Click:Connect(function() ToggleSpeed() SyncToggles() end)
+bIJ.MouseButton1Click:Connect(function() ToggleInfJump() SyncToggles() end)
+bBat.MouseButton1Click:Connect(function()
+    ST.BatCntOn = not ST.BatCntOn if ST.BatCntOn then StartBC() else StopBC() end SyncToggles()
+end)
+bMed.MouseButton1Click:Connect(function()
+    ST.MedCntOn = not ST.MedCntOn
+    if ST.MedCntOn then if LP.Character then SetupMed(LP.Character) end
+    else for _, c in pairs(ST.MedConns) do pcall(function() c:Disconnect() end) end ST.MedConns = {} end
+    SyncToggles()
+end)
+bRag.MouseButton1Click:Connect(function() EnableAR() SyncToggles() end)
+bATPD.MouseButton1Click:Connect(function() ST.AutoTPDOn = not ST.AutoTPDOn ToggleATPD(ST.AutoTPDOn) SyncToggles() end)
+bLag.MouseButton1Click:Connect(function() ToggleALag() SyncToggles() end)
+bFP.MouseButton1Click:Connect(function() ToggleFPS() SyncToggles() end)
 
--- دخول أنيميشن للاقر
-Panel.Size = UDim2.new(0, 240 * SC, 0, 0)
-Panel.BackgroundTransparency = 1
-TweenService:Create(Panel, TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-    Size = UDim2.new(0, 240 * SC, 0, 100 * SC),
-    BackgroundTransparency = 0.35,
-}):Play()
+UpdateMode() SyncToggles()
 
--- ==========================================
--- == 35. تحميل الإعدادات المحفوظة (Load Saved Data) ==
--- == 🔧 إصلاح: التحميل يتم بعد إنشاء الواجهة ==
--- ==========================================
 task.spawn(function()
-    SaveData = LoadSave()
-
-    -- تحميل السرعات المحفوظة بعد التأكد من وجود مربعات النص
-    if SaveData.Speeds then
-        for k, v in pairs(SaveData.Speeds) do
-            if BX[k] and BX[k].Parent and v then
-                BX[k].Text = tostring(v)
+    while _G.ExtRunning and CoreActive do
+        pcall(function()
+            if ST.isStealing and ST.stealStart then
+                local e = tick() - ST.stealStart local p = math.clamp(e / STEAL_DELAY, 0, 1)
+                TweenService:Create(StealBar, TweenInfo.new(0.1), { Size = UDim2.new(p, 0, 1, 0) }):Play()
+                ProgressPct.Text = math.floor(p * 100) .. "%"
+                StealLabel.Text = L("stealing") .. " " .. math.floor(p * 100) .. "%"
+            else
+                TweenService:Create(StealBar, TweenInfo.new(0.3), { Size = UDim2.new(0, 0, 1, 0) }):Play()
+                ProgressPct.Text = "0%" StealLabel.Text = L("steal_rdy")
             end
-        end
+        end)
+        task.wait(0.1)
     end
-
-    UpdateLang()
-
-    -- لوب الحفظ التلقائي كل 5 ثواني
-    while CoreActive and _G.ExtRunning do
-        SaveSave()
-        task.wait(5)
-    end
-
-    -- حفظ أخير عند الإغلاق
-    SaveSave()
 end)
 
--- ==========================================
--- == 36. الإشعارات الابتدائية (Initial Notifications) ==
--- ==========================================
-task.delay(0.7, function()
-    Notify(L("lagger_title"), L("lagger_sel"), 3, C.GRN)
+task.spawn(function()
+    while _G.ExtRunning and CoreActive do task.wait(3) SaveSave() end
 end)
 
-Notify("EXTERNAL HUB", L("notif_on"), 3)
+task.spawn(function()
+    while _G.ExtRunning and CoreActive do
+        if ST.LockOn ~= bLockF:GetAttribute("On") then bLockF:SetAttribute("On", ST.LockOn) end
+        task.wait(0.3)
+    end
+end)
+
+local function ProtectGui(g)
+    if not g then return end
+    local n = g.Name
+    g.Changed:Connect(function(p)
+        if p == "Parent" and not g.Parent then pcall(function() g.Parent = CoreGui end) end
+        if p == "Name" and g.Name ~= n then pcall(function() g.Name = n end) end
+    end)
+end
+ProtectGui(MainFolder)
+
+Notify("EXTERNAL HUB", L("notif_on"), 3, C.GRN)
