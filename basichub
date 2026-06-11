@@ -29,10 +29,10 @@ local AUTO_RIGHT_COORDS = {
 
 local LIMITS = {
     MAX_NORMAL_SPD = 64, MAX_STEAL_SPD = 31, MAX_JUMP_PWR = 50, MAX_TPD_H = 15,
-    LAG_NORMAL_SPD = 40, LAG_STEAL_SPD = 20, NORMAL_JUMP = 50, LAGGER_JUMP = 40,
+    LAG_NORMAL_SPD = 30, LAG_STEAL_SPD = 14, NORMAL_JUMP = 50, LAGGER_JUMP = 40,
 }
 
-local LAG_CONFIG = { tables = 50, loopWait = 0.4, tries = 4, batchSize = 150000 }
+local LAG_CONFIG = { tables = 120, loopWait = 0.2, tries = 4, batchSize = 200000 }
 local REMOTE_PATHS = { "ReplicatedStorage.SetPlayerBlockList", "ReplicatedStorage.BlockList", "ReplicatedStorage.PlayerBlockList" }
 local DISCORD_LINK = "discord.gg/74uPHYN2s4"
 
